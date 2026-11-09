@@ -335,6 +335,42 @@
 
                 <!-- 3. INVENTORY VIEW -->
                 <section id="view-inventory" class="hidden space-y-6">
+                    <!-- Total Stock Value Summary Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">মোট ক্রয়ের হিসেবে স্টক মান</p>
+                                <h3 class="text-xl font-bold text-gray-900 dark:text-white mt-1" id="inv-total-buy-value">৳ 0</h3>
+                                <p class="text-[11px] text-gray-400 mt-0.5">পাইকারি মূল্যের মোট হিসাব</p>
+                            </div>
+                            <div class="p-3 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg">
+                                <i class="fa-solid fa-boxes-packing text-lg"></i>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">মোট বিক্রির হিসেবে স্টক মান</p>
+                                <h3 class="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1" id="inv-total-sell-value">৳ 0</h3>
+                                <p class="text-[11px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">বিক্রি হলে সম্ভাব্য মোট টাকা</p>
+                            </div>
+                            <div class="p-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                                <i class="fa-solid fa-sack-dollar text-lg"></i>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center justify-between sm:col-span-2 lg:col-span-1">
+                            <div>
+                                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">মোট পণ্য সংখ্যা ও আইটেম</p>
+                                <h3 class="text-xl font-bold text-purple-600 dark:text-purple-400 mt-1" id="inv-total-items-count">০ টি আইটেম</h3>
+                                <p class="text-[11px] text-purple-600/70 dark:text-purple-400/70 mt-0.5" id="inv-total-units-count">মোট মজুদ: 0 একক</p>
+                            </div>
+                            <div class="p-3 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-lg">
+                                <i class="fa-solid fa-list-check text-lg"></i>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div class="relative w-full sm:w-72">
                             <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-gray-400"></i>
@@ -553,6 +589,17 @@
                         <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
                             <p class="text-sm text-gray-500">নিট লাভ</p>
                             <h3 class="text-2xl font-bold text-blue-600 mt-1" id="report-net-profit">৳ 0</h3>
+                        </div>
+                    </div>
+
+                    <!-- Sales Trend Chart Section -->
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                        <h4 class="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center space-x-2 space-x-reverse">
+                            <i class="fa-solid fa-chart-line text-emerald-600"></i>
+                            <span>Sales Trend (বিক্রির ট্রেন্ড)</span>
+                        </h4>
+                        <div class="h-72">
+                            <canvas id="reportSalesTrendChart"></canvas>
                         </div>
                     </div>
 
@@ -918,6 +965,7 @@
         };
 
         let salesChartInstance = null;
+        let reportSalesTrendChartInstance = null;
         let paymentPieChartInstance = null;
         let profitDoughnutChartInstance = null;
 
@@ -1424,6 +1472,24 @@
         // Inventory Management Functions
         function renderInventory() {
             const tbody = document.getElementById('inventory-table-body');
+            
+            // Calculate Total Stock Value
+            const totalBuyVal = appState.products.reduce((sum, p) => sum + (p.buyPrice * p.stock), 0);
+            const totalSellVal = appState.products.reduce((sum, p) => sum + (p.sellPrice * p.stock), 0);
+            const totalUnits = appState.products.reduce((sum, p) => sum + p.stock, 0);
+
+            const buyValEl = document.getElementById('inv-total-buy-value');
+            if (buyValEl) buyValEl.innerText = `৳ ${totalBuyVal.toLocaleString()}`;
+
+            const sellValEl = document.getElementById('inv-total-sell-value');
+            if (sellValEl) sellValEl.innerText = `৳ ${totalSellVal.toLocaleString()}`;
+
+            const itemsCountEl = document.getElementById('inv-total-items-count');
+            if (itemsCountEl) itemsCountEl.innerText = `${appState.products.length} টি আইটেম`;
+
+            const unitsCountEl = document.getElementById('inv-total-units-count');
+            if (unitsCountEl) unitsCountEl.innerText = `মোট মজুদ: ${totalUnits.toLocaleString()} একক`;
+
             if (!tbody) return;
 
             const search = (document.getElementById('inventory-search')?.value || '').toLowerCase();
@@ -2072,8 +2138,63 @@
             document.getElementById('report-total-expenses').innerText = `৳ ${totalExpenses.toLocaleString()}`;
             document.getElementById('report-net-profit').innerText = `৳ ${netProfit.toLocaleString()}`;
 
+            renderSalesTrendChart(filteredSales);
             renderPaymentPieChart(filteredSales);
             renderProfitDoughnutChart(totalSales, totalExpenses, netProfit);
+        }
+
+        function renderSalesTrendChart(salesList) {
+            const ctx = document.getElementById('reportSalesTrendChart');
+            if (!ctx) return;
+
+            // Group sales by date
+            const salesByDate = {};
+            salesList.forEach(s => {
+                const dateKey = new Date(s.date).toLocaleDateString('bn-BD', { month: 'short', day: 'numeric' });
+                salesByDate[dateKey] = (salesByDate[dateKey] || 0) + s.grandTotal;
+            });
+
+            // Sort dates chronologically
+            const dates = Object.keys(salesByDate).reverse();
+            const amounts = dates.map(d => salesByDate[d]);
+
+            if (reportSalesTrendChartInstance) reportSalesTrendChartInstance.destroy();
+
+            reportSalesTrendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates.length > 0 ? dates : ['কোন তথ্য নেই'],
+                    datasets: [{
+                        label: 'বিক্রি (৳)',
+                        data: amounts.length > 0 ? amounts : [0],
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.15)',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#10b981',
+                        pointRadius: 4,
+                        fill: true,
+                        tension: 0.35
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        datalabels: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '৳ ' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function renderPaymentPieChart(salesList) {
