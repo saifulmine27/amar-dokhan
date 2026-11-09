@@ -391,6 +391,70 @@
 
                 <!-- 5. EXPENSE REGISTER VIEW -->
                 <section id="view-expenses" class="hidden space-y-6">
+                    <!-- Upgraded Modern Date & Month Filter Panel -->
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm space-y-4">
+                        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-700/60">
+                            <!-- Left: Filter Inputs -->
+                            <div class="flex flex-wrap items-center gap-3">
+                                <!-- Exact Date Picker Field -->
+                                <div class="flex flex-col space-y-1">
+                                    <label class="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center space-x-1 space-x-reverse">
+                                        <i class="fa-solid fa-calendar-day"></i>
+                                        <span>নির্দিষ্ট তারিখ</span>
+                                    </label>
+                                    <div class="relative">
+                                        <input type="date" id="expense-date-filter" onchange="onExpenseDateChange()" class="bg-emerald-50/50 dark:bg-gray-700/60 border border-emerald-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 font-medium rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all">
+                                    </div>
+                                </div>
+
+                                <div class="hidden sm:block text-gray-300 dark:text-gray-600 font-light text-xl">/</div>
+
+                                <!-- Month Picker Field -->
+                                <div class="flex flex-col space-y-1">
+                                    <label class="text-[11px] font-bold text-purple-700 dark:text-purple-400 flex items-center space-x-1 space-x-reverse">
+                                        <i class="fa-solid fa-calendar-days"></i>
+                                        <span>সম্পূর্ণ মাস</span>
+                                    </label>
+                                    <div class="relative">
+                                        <input type="month" id="expense-month-filter" onchange="onExpenseMonthChange()" class="bg-purple-50/50 dark:bg-gray-700/60 border border-purple-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 font-medium rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all">
+                                    </div>
+                                </div>
+
+                                <!-- Quick Preset Filter Pills -->
+                                <div class="flex items-end gap-1.5 pt-4 sm:pt-0">
+                                    <button onclick="setExpenseFilterToday()" class="px-3 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shadow-sm transition-all flex items-center space-x-1 space-x-reverse">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>আজকের খরচ</span>
+                                    </button>
+                                    <button onclick="clearExpenseFilters()" class="px-3 py-2 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-semibold transition-all flex items-center space-x-1 space-x-reverse">
+                                        <i class="fa-solid fa-rotate-left"></i>
+                                        <span>সব খরচ</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Right: Expense Summary Statistics -->
+                            <div class="flex items-center gap-3">
+                                <div class="bg-gradient-to-br font-sans from-emerald-500/10 to-teal-500/5 dark:from-emerald-900/30 dark:to-teal-900/10 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60 min-w-[130px] text-right">
+                                    <span class="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block" id="expense-summary-total-label">ফিল্টারকৃত মোট খরচ</span>
+                                    <span class="text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5 block" id="expense-monthly-total">৳ 0</span>
+                                </div>
+                                <div class="bg-gradient-to-br font-sans from-purple-500/10 to-indigo-500/5 dark:from-purple-900/30 dark:to-indigo-900/10 p-3 rounded-xl border border-purple-200/60 dark:border-purple-800/60 min-w-[130px] text-right">
+                                    <span class="text-[11px] text-purple-800 dark:text-purple-300 font-semibold block" id="expense-summary-salary-label">মোট স্টাফ বেতন</span>
+                                    <span class="text-base font-extrabold text-purple-600 dark:text-purple-400 mt-0.5 block" id="expense-monthly-salary">৳ 0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Filter Status Indicator Bar -->
+                        <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                            <span class="flex items-center space-x-1.5 space-x-reverse">
+                                <i class="fa-solid fa-filter text-emerald-500"></i>
+                                <span id="expense-active-filter-text">বর্তমানে: **সমস্ত হিসাব** প্রদর্শিত হচ্ছে</span>
+                            </span>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- Add Expense Form -->
                         <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
@@ -400,19 +464,37 @@
                             <div>
                                 <label class="block text-xs font-medium text-gray-500 mb-1.5">সচরাচর ব্যবহৃত খরচের প্রিসেট</label>
                                 <div class="flex flex-wrap gap-1.5">
-                                    <button type="button" onclick="setExpensePreset('দোকান ভাড়া')" class="px-2.5 py-1 text-xs bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-100 font-medium transition-colors">🏢 দোকান ভাড়া</button>
-                                    <button type="button" onclick="setExpensePreset('বিদ্যুৎ বিল')" class="px-2.5 py-1 text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-100 font-medium transition-colors">⚡ বিদ্যুৎ বিল</button>
-                                    <button type="button" onclick="setExpensePreset('নাস্তা ও চা')" class="px-2.5 py-1 text-xs bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 rounded-lg hover:bg-orange-100 font-medium transition-colors">☕ নাস্তা ও চা</button>
-                                    <button type="button" onclick="setExpensePreset('পরিবহন খরচ')" class="px-2.5 py-1 text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 font-medium transition-colors">🚚 পরিবহন খরচ</button>
-                                    <button type="button" onclick="setExpensePreset('কর্মচারী বেতন')" class="px-2.5 py-1 text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-100 font-medium transition-colors">👤 কর্মচারী বেতন</button>
-                                    <button type="button" onclick="setExpensePreset('মোবাইল ও ইন্টারনেট')" class="px-2.5 py-1 text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 font-medium transition-colors">📱 নেট/মোবাইল</button>
+                                    <button type="button" onclick="setExpenseTypePreset('দোকান ভাড়া')" class="px-2.5 py-1 text-xs bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-100 font-medium transition-colors">🏢 দোকান ভাড়া</button>
+                                    <button type="button" onclick="setExpenseTypePreset('বিদ্যুৎ বিল')" class="px-2.5 py-1 text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-100 font-medium transition-colors">⚡ বিদ্যুৎ বিল</button>
+                                    <button type="button" onclick="setExpenseTypePreset('নাস্তা ও চা')" class="px-2.5 py-1 text-xs bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 rounded-lg hover:bg-orange-100 font-medium transition-colors">☕ নাস্তা ও চা</button>
+                                    <button type="button" onclick="setExpenseTypePreset('পরিবহন খরচ')" class="px-2.5 py-1 text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 font-medium transition-colors">🚚 পরিবহন</button>
+                                    <button type="button" onclick="setExpenseTypePreset('কর্মচারী বেতন')" class="px-2.5 py-1 text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-100 font-medium transition-colors">👤 কর্মচারী বেতন</button>
                                 </div>
                             </div>
 
                             <form onsubmit="addExpense(event)" class="space-y-3 pt-1">
                                 <div>
-                                    <label class="block text-xs font-medium text-gray-500 mb-1">খরচের বিবরণ / খাত *</label>
-                                    <input type="text" id="expense-title" required placeholder="যেমন: দোকান ভাড়া, কারেন্ট বিল..." class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                    <label class="block text-xs font-medium text-gray-500 mb-1">খরচের ধরণ / খাত *</label>
+                                    <select id="expense-type" onchange="toggleStaffInput()" class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                        <option value="অন্যান্য">অন্যান্য খরচ</option>
+                                        <option value="দোকান ভাড়া">🏢 দোকান ভাড়া</option>
+                                        <option value="বিদ্যুৎ বিল">⚡ বিদ্যুৎ বিল</option>
+                                        <option value="নাস্তা ও চা">☕ নাস্তা ও চা</option>
+                                        <option value="পরিবহন খরচ">🚚 পরিবহন খরচ</option>
+                                        <option value="কর্মচারী বেতন">👤 কর্মচারী বেতন (Salary)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Staff Selection Box (Hidden unless 'কর্মচারী বেতন' is selected) -->
+                                <div id="staff-name-container" class="hidden space-y-2 bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
+                                    <label class="block text-xs font-bold text-purple-800 dark:text-purple-200">কর্মচারীর/স্টাফের নাম *</label>
+                                    <input type="text" id="expense-staff-name" placeholder="যেমন: রফিক, করিম, শফিক..." class="w-full px-3 py-1.5 bg-white dark:bg-gray-700 border border-purple-300 dark:border-purple-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                    <p class="text-[10px] text-purple-600 dark:text-purple-300">স্টাফের নাম উল্লেখ করলে পরবর্তীতে উনার নামের লেজার দেখতে পাবেন।</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 mb-1">বিবরণ (ঐচ্ছিক)</label>
+                                    <input type="text" id="expense-title" placeholder="যেমন: নভেম্বর মাসের বিল / অগ্রিম..." class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-500 mb-1">পরিমাণ (৳) *</label>
@@ -426,15 +508,16 @@
 
                         <!-- Expenses History List -->
                         <div class="md:col-span-2 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4">খরচের ইতিহাস</h3>
+                            <h3 class="font-bold text-lg text-gray-800 dark:text-white mb-4">খরচ ও বেতন প্রদানের ইতিহাস</h3>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left text-sm text-gray-600 dark:text-gray-300">
                                     <thead class="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold border-b border-gray-200 dark:border-gray-700">
                                         <tr>
-                                            <th class="p-4">তারিখ</th>
-                                            <th class="p-4">খাত</th>
-                                            <th class="p-4 text-right">পরিমাণ</th>
-                                            <th class="p-4 text-center">মুছুন</th>
+                                            <th class="p-3">তারিখ</th>
+                                            <th class="p-3">খাত / বিবরণ</th>
+                                            <th class="p-3">কর্মচারী/স্টাফ</th>
+                                            <th class="p-3 text-right">পরিমাণ</th>
+                                            <th class="p-3 text-center">মুছুন</th>
                                         </tr>
                                     </thead>
                                     <tbody id="expense-table-body" class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -869,6 +952,12 @@
 
         // Init App
         window.onload = function() {
+            // Set current month in filter by default
+            const now = new Date();
+            const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const monthInput = document.getElementById('expense-month-filter');
+            if (monthInput) monthInput.value = currentMonthStr;
+
             initSettings();
             renderDashboard();
             renderPOSCategoryButtons();
@@ -1436,7 +1525,7 @@
             const alertLevel = parseInt(document.getElementById('prod-alert').value) || 5;
 
             if (id) {
-                const prod = appState.products.find(p => p.id == id);
+                const prod = appState.products.find(p => p.id === parseInt(id));
                 if (prod) {
                     prod.name = name;
                     prod.category = category;
@@ -1447,254 +1536,95 @@
                     prod.alertLevel = alertLevel;
                 }
             } else {
-                const newId = appState.products.length > 0 ? Math.max(...appState.products.map(p => p.id)) + 1 : 1;
-                appState.products.push({ id: newId, name, category, unit, buyPrice, sellPrice, stock, alertLevel });
+                const newProd = {
+                    id: Date.now(),
+                    name,
+                    category,
+                    unit,
+                    buyPrice,
+                    sellPrice,
+                    stock,
+                    alertLevel
+                };
+                appState.products.unshift(newProd);
             }
 
             saveState();
             closeProductModal();
             renderInventory();
-            renderPOSCategoryButtons();
             renderPOSProducts();
+            renderPOSCategoryButtons();
             showToast('পণ্য সফলভাবে সংরক্ষণ করা হয়েছে');
         }
 
         // Checkout Process
         function processCheckout() {
             if (appState.cart.length === 0) {
-                showToast('বিক্রির তালিকা খালি!', 'error');
+                showToast('কার্টে কোনো পণ্য নেই!', 'error');
                 return;
             }
 
-            const customerName = document.getElementById('pos-customer-name').value.trim() || 'সাধারণ কাস্টমার';
-            const customerPhone = document.getElementById('pos-customer-phone').value.trim() || '';
+            const custNameInput = document.getElementById('pos-customer-name').value.trim();
+            const custPhoneInput = document.getElementById('pos-customer-phone').value.trim();
+            const customerName = custNameInput || 'সাধারণ কাস্টমার';
 
-            const subtotal = appState.cart.reduce((sum, item) => sum + (item.sellPrice * item.qty), 0);
             const discount = parseFloat(document.getElementById('pos-discount').value) || 0;
+            const subtotal = appState.cart.reduce((sum, item) => sum + (item.sellPrice * item.qty), 0);
             const grandTotal = Math.max(0, subtotal - discount);
 
             // Deduct Stock
-            appState.cart.forEach(c => {
-                const p = appState.products.find(prod => prod.id === c.id);
-                if (p) p.stock = Math.max(0, p.stock - c.qty);
+            appState.cart.forEach(cartItem => {
+                const prod = appState.products.find(p => p.id === cartItem.id);
+                if (prod) {
+                    prod.stock = Math.max(0, prod.stock - cartItem.qty);
+                }
             });
 
-            const saleId = 'INV-' + Date.now().toString().slice(-6);
+            // Save/Update Customer Ledger if customer provided
+            if (custNameInput) {
+                if (!appState.customers[custNameInput]) {
+                    appState.customers[custNameInput] = { phone: custPhoneInput, initialDue: 0 };
+                } else if (custPhoneInput) {
+                    appState.customers[custNameInput].phone = custPhoneInput;
+                }
+            }
+
             const sale = {
-                id: saleId,
+                id: 'INV-' + Date.now().toString().slice(-6),
                 date: new Date().toISOString(),
                 customerName: customerName,
-                customerPhone: customerPhone,
-                items: [...appState.cart],
+                customerPhone: custPhoneInput,
+                items: JSON.parse(JSON.stringify(appState.cart)),
                 subtotal: subtotal,
                 discount: discount,
                 grandTotal: grandTotal,
                 paymentMethod: appState.selectedPaymentMethod
             };
 
-            appState.sales.unshift(sale);
-
-            // Customer ledger & dues entry
-            if (!appState.customers[customerName]) {
-                appState.customers[customerName] = { phone: customerPhone };
-            }
-
+            // Handle Due Payment Record
             if (appState.selectedPaymentMethod === 'Due') {
                 if (!appState.dues[customerName]) {
-                    appState.dues[customerName] = { phone: customerPhone, amount: 0 };
+                    appState.dues[customerName] = { phone: custPhoneInput, amount: 0 };
                 }
                 appState.dues[customerName].amount += grandTotal;
+                if (custPhoneInput) appState.dues[customerName].phone = custPhoneInput;
             }
 
+            appState.sales.unshift(sale);
             saveState();
-            clearCart();
+
+            // Clear Cart
+            appState.cart = [];
+            document.getElementById('pos-customer-name').value = '';
+            document.getElementById('pos-customer-phone').value = '';
+            document.getElementById('pos-discount').value = 0;
+            renderCart();
             renderPOSProducts();
-            showToast('বিক্রি সফলভাবে সম্পন্ন হয়েছে!');
+
+            showToast('বিক্রি সফলভাবে সম্পন্ন হয়েছে');
         }
 
-        // Customer Dues & Ledger Functions
-        function renderDueList() {
-            const tbody = document.getElementById('due-table-body');
-            if (!tbody) return;
-
-            const customerKeys = Object.keys(appState.customers);
-            if (customerKeys.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">কোনো কাস্টমার লেজার পাওয়া যায়নি</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = customerKeys.map(name => {
-                const phone = appState.customers[name].phone || 'N/A';
-                const dueAmount = appState.dues[name] ? appState.dues[name].amount : 0;
-                return `
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td class="p-4 font-bold text-gray-800 dark:text-white cursor-pointer hover:text-emerald-600" onclick="openLedgerHistory('${name.replace(/'/g, "\\'")}')">
-                            ${name}
-                        </td>
-                        <td class="p-4">${phone}</td>
-                        <td class="p-4 text-right font-bold ${dueAmount > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600'}">৳ ${dueAmount}</td>
-                        <td class="p-4 text-center space-x-1">
-                            <button onclick="openLedgerHistory('${name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded text-xs font-semibold">
-                                লেজার হিস্ট্রি
-                            </button>
-                            ${dueAmount > 0 ? `
-                                <button onclick="openDueModal('${name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-semibold">
-                                    জমা নিন
-                                </button>
-                            ` : ''}
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function openDueModal(name) {
-            const modal = document.getElementById('due-modal');
-            if (!modal) return;
-            document.getElementById('due-customer-name').value = name;
-            document.getElementById('due-modal-customer-info').innerText = `${name} (বর্তমান বাকি: ৳ ${appState.dues[name]?.amount || 0})`;
-            document.getElementById('due-pay-amount').value = '';
-            modal.classList.remove('hidden');
-        }
-
-        function closeDueModal() {
-            const modal = document.getElementById('due-modal');
-            if (modal) modal.classList.add('hidden');
-        }
-
-        function payDue(e) {
-            e.preventDefault();
-            const name = document.getElementById('due-customer-name').value;
-            const amount = parseFloat(document.getElementById('due-pay-amount').value) || 0;
-
-            if (amount <= 0) {
-                showToast('সঠিক টাকার পরিমাণ দিন', 'error');
-                return;
-            }
-
-            if (appState.dues[name]) {
-                appState.dues[name].amount = Math.max(0, appState.dues[name].amount - amount);
-            }
-
-            appState.payments.unshift({
-                id: 'PAY-' + Date.now().toString().slice(-6),
-                customerName: name,
-                amount: amount,
-                date: new Date().toISOString()
-            });
-
-            saveState();
-            closeDueModal();
-            renderDueList();
-            showToast('জমা সফলভাবে গৃহীত হয়েছে');
-        }
-
-        function openLedgerHistory(name) {
-            const modal = document.getElementById('ledger-modal');
-            if (!modal) return;
-
-            const custSales = appState.sales.filter(s => s.customerName === name);
-            const custPayments = appState.payments.filter(p => p.customerName === name);
-
-            const totalBill = custSales.reduce((sum, s) => sum + s.grandTotal, 0);
-            const totalPaid = custSales.filter(s => s.paymentMethod !== 'Due').reduce((sum, s) => sum + s.grandTotal, 0) + 
-                              custPayments.reduce((sum, p) => sum + p.amount, 0);
-            const currentDue = appState.dues[name] ? appState.dues[name].amount : 0;
-
-            document.getElementById('ledger-modal-title').innerText = `${name} - লেজার হিস্ট্রি`;
-            document.getElementById('ledger-modal-subtitle').innerText = `ফোন: ${appState.customers[name]?.phone || 'N/A'}`;
-
-            document.getElementById('ledger-summary-total').innerText = `৳ ${totalBill.toLocaleString()}`;
-            document.getElementById('ledger-summary-paid').innerText = `৳ ${totalPaid.toLocaleString()}`;
-            document.getElementById('ledger-summary-due').innerText = `৳ ${currentDue.toLocaleString()}`;
-
-            const records = [];
-            custSales.forEach(s => records.push({ type: 'SALE', date: s.date, id: s.id, total: s.grandTotal, paid: s.paymentMethod !== 'Due' ? s.grandTotal : 0, due: s.paymentMethod === 'Due' ? s.grandTotal : 0 }));
-            custPayments.forEach(p => records.push({ type: 'PAYMENT', date: p.date, id: p.id, total: 0, paid: p.amount, due: 0 }));
-
-            records.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-            const tbody = document.getElementById('ledger-modal-tbody');
-            if (records.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-gray-400">কোনো লেনদেন রেকর্ড পাওয়া যায়নি</td></tr>`;
-            } else {
-                tbody.innerHTML = records.map(r => `
-                    <tr class="${r.type === 'PAYMENT' ? 'bg-emerald-50/50 dark:bg-emerald-900/20' : ''}">
-                        <td class="p-2">${new Date(r.date).toLocaleDateString('bn-BD')}</td>
-                        <td class="p-2 font-medium">${r.type === 'SALE' ? `বিক্রি (${r.id})` : `বাকি জমা (${r.id})`}</td>
-                        <td class="p-2 text-right">৳ ${r.total}</td>
-                        <td class="p-2 text-right font-semibold text-emerald-600">৳ ${r.paid}</td>
-                        <td class="p-2 text-right font-semibold text-red-500">৳ ${r.due}</td>
-                    </tr>
-                `).join('');
-            }
-
-            modal.classList.remove('hidden');
-        }
-
-        function closeLedgerModal() {
-            const modal = document.getElementById('ledger-modal');
-            if (modal) modal.classList.add('hidden');
-        }
-
-        // Expense Functions
-        function setExpensePreset(title) {
-            document.getElementById('expense-title').value = title;
-            document.getElementById('expense-amount').focus();
-        }
-
-        function addExpense(e) {
-            e.preventDefault();
-            const title = document.getElementById('expense-title').value.trim();
-            const amount = parseFloat(document.getElementById('expense-amount').value) || 0;
-
-            if (!title || amount <= 0) return;
-
-            appState.expenses.unshift({
-                id: Date.now(),
-                title: title,
-                amount: amount,
-                date: new Date().toISOString()
-            });
-
-            saveState();
-            document.getElementById('expense-title').value = '';
-            document.getElementById('expense-amount').value = '';
-            renderExpenses();
-            showToast('খরচ সফলভাবে যুক্ত করা হয়েছে');
-        }
-
-        function renderExpenses() {
-            const tbody = document.getElementById('expense-table-body');
-            if (!tbody) return;
-
-            if (appState.expenses.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">কোনো খরচের এন্ট্রি পাওয়া যায়নি</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = appState.expenses.map(e => `
-                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td class="p-4 text-xs">${new Date(e.date).toLocaleDateString('bn-BD')}</td>
-                    <td class="p-4 font-semibold text-gray-800 dark:text-white">${e.title}</td>
-                    <td class="p-4 text-right font-bold text-red-500">৳ ${e.amount}</td>
-                    <td class="p-4 text-center">
-                        <button onclick="deleteExpense(${e.id})" class="p-1 text-red-500 hover:text-red-700 text-xs">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        function deleteExpense(id) {
-            appState.expenses = appState.expenses.filter(e => e.id !== id);
-            saveState();
-            renderExpenses();
-            showToast('খরচ মুছে ফেলা হয়েছে');
-        }
-
-        // Memo View Functions
+        // Memo Functions
         function viewMemo(sale) {
             populateMemoFields(sale);
             const modalContent = document.getElementById('printable-receipt').innerHTML;
@@ -1715,13 +1645,13 @@
                 <tr>
                     <td class="py-1">${i.name} (${i.unit || 'পিস'})</td>
                     <td class="py-1 text-center">${i.qty}</td>
-                    <td class="py-1 text-right">৳ ${i.sellPrice * i.qty}</td>
+                    <td class="py-1 text-right">৳ ${(i.sellPrice * i.qty).toLocaleString()}</td>
                 </tr>
             `).join('');
 
-            document.getElementById('memo-subtotal').innerText = `৳ ${sale.subtotal}`;
-            document.getElementById('memo-discount').innerText = `৳ ${sale.discount}`;
-            document.getElementById('memo-grandtotal').innerText = `৳ ${sale.grandTotal}`;
+            document.getElementById('memo-subtotal').innerText = `৳ ${sale.subtotal.toLocaleString()}`;
+            document.getElementById('memo-discount').innerText = `৳ ${sale.discount.toLocaleString()}`;
+            document.getElementById('memo-grandtotal').innerText = `৳ ${sale.grandTotal.toLocaleString()}`;
             document.getElementById('memo-payment-type').innerText = sale.paymentMethod;
         }
 
@@ -1735,27 +1665,29 @@
 
         function viewMemoById(saleId) {
             const sale = appState.sales.find(s => s.id === saleId);
-            if (sale) viewMemo(sale);
+            if (sale) {
+                viewMemo(sale);
+            }
         }
 
         function renderMemosSection() {
             const tbody = document.getElementById('memos-section-table');
             if (!tbody) return;
 
-            const search = (document.getElementById('memo-search')?.value || '').toLowerCase();
-            const payFilter = document.getElementById('memo-payment-filter')?.value || 'all';
+            const search = (document.getElementById('memo-search')?.value || '').toLowerCase().trim();
+            const filterMethod = document.getElementById('memo-payment-filter')?.value || 'all';
 
-            const filtered = appState.sales.filter(s => {
-                const matchesSearch = s.id.toLowerCase().includes(search) || s.customerName.toLowerCase().includes(search);
-                const matchesPay = payFilter === 'all' || s.paymentMethod === payFilter;
-                return matchesSearch && matchesPay;
+            let filtered = appState.sales.filter(s => {
+                const matchSearch = s.id.toLowerCase().includes(search) || s.customerName.toLowerCase().includes(search);
+                const matchMethod = filterMethod === 'all' || s.paymentMethod === filterMethod;
+                return matchSearch && matchMethod;
             });
 
-            const badge = document.getElementById('memo-count-badge');
-            if (badge) badge.innerText = `${filtered.length} টি মেমো`;
+            const countBadge = document.getElementById('memo-count-badge');
+            if (countBadge) countBadge.innerText = `${filtered.length} টি মেমো`;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">কোনো মেমো পাওয়া যায়নি</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">কোনো মেমো রেকর্ড পাওয়া যায়নি</td></tr>`;
                 return;
             }
 
@@ -1764,10 +1696,10 @@
                     <td class="p-3 font-semibold text-emerald-600">${s.id}</td>
                     <td class="p-3 text-xs">${new Date(s.date).toLocaleString('bn-BD')}</td>
                     <td class="p-3 font-medium">${s.customerName}</td>
-                    <td class="p-3 text-right font-bold text-gray-800 dark:text-white">৳ ${s.grandTotal}</td>
-                    <td class="p-3 text-center"><span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">${s.paymentMethod}</span></td>
+                    <td class="p-3 text-right font-bold text-gray-800 dark:text-white">৳ ${s.grandTotal.toLocaleString()}</td>
+                    <td class="p-3 text-center"><span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs font-semibold">${s.paymentMethod}</span></td>
                     <td class="p-3 text-center">
-                        <button onclick='viewMemoById("${s.id}")' class="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 rounded text-xs font-semibold flex items-center justify-center space-x-1 mx-auto">
+                        <button onclick='viewMemoById("${s.id}")' class="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 rounded text-xs font-semibold flex items-center justify-center space-x-1 mx-auto">
                             <i class="fa-solid fa-receipt"></i> <span>মেমো দেখুন</span>
                         </button>
                     </td>
@@ -1775,59 +1707,393 @@
             `).join('');
         }
 
-        // Reports & Analytics
+        // Due Register & Ledger Functions
+        function renderDueList() {
+            const tbody = document.getElementById('due-table-body');
+            if (!tbody) return;
+
+            const dueCustomers = Object.keys(appState.dues).filter(name => appState.dues[name].amount > 0);
+
+            if (dueCustomers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">কোনো বাকির রেকর্ড নেই</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = dueCustomers.map(name => {
+                const info = appState.dues[name];
+                return `
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td class="p-4 font-bold text-gray-800 dark:text-white cursor-pointer hover:text-emerald-600" onclick="openCustomerLedger('${name.replace(/'/g, "\\'")}')">${name}</td>
+                        <td class="p-4 text-gray-500">${info.phone || 'N/A'}</td>
+                        <td class="p-4 text-right font-bold text-red-600">৳ ${info.amount.toLocaleString()}</td>
+                        <td class="p-4 text-center space-x-1">
+                            <button onclick="openDueModal('${name.replace(/'/g, "\\'")}')" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs font-semibold hover:bg-emerald-700">
+                                জমা নিন
+                            </button>
+                            <button onclick="openCustomerLedger('${name.replace(/'/g, "\\'")}')" class="px-3 py-1 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 rounded text-xs font-semibold hover:bg-blue-100">
+                                লেজার হিস্ট্রি
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openDueModal(customerName) {
+            const modal = document.getElementById('due-modal');
+            if (!modal) return;
+            const dueInfo = appState.dues[customerName];
+            document.getElementById('due-customer-name').value = customerName;
+            document.getElementById('due-modal-customer-info').innerText = `${customerName} - বকেয়া: ৳ ${dueInfo ? dueInfo.amount : 0}`;
+            document.getElementById('due-pay-amount').value = '';
+            modal.classList.remove('hidden');
+        }
+
+        function closeDueModal() {
+            document.getElementById('due-modal').classList.add('hidden');
+        }
+
+        function payDue(e) {
+            e.preventDefault();
+            const customerName = document.getElementById('due-customer-name').value;
+            const payAmount = parseFloat(document.getElementById('due-pay-amount').value) || 0;
+
+            if (payAmount <= 0) return;
+
+            if (appState.dues[customerName]) {
+                appState.dues[customerName].amount = Math.max(0, appState.dues[customerName].amount - payAmount);
+            }
+
+            // Record payment for Ledger tracking
+            appState.payments.push({
+                id: 'PAY-' + Date.now().toString().slice(-6),
+                date: new Date().toISOString(),
+                customerName: customerName,
+                amount: payAmount
+            });
+
+            saveState();
+            closeDueModal();
+            renderDueList();
+            renderDashboard();
+            showToast('বাকি জমা সফলভাবে গ্রহণ করা হয়েছে');
+        }
+
+        function openCustomerLedger(customerName) {
+            const modal = document.getElementById('ledger-modal');
+            if (!modal) return;
+
+            const custObj = appState.customers[customerName] || {};
+            document.getElementById('ledger-modal-title').innerText = `কাস্টমার লেজার: ${customerName}`;
+            document.getElementById('ledger-modal-subtitle').innerText = `ফোন: ${custObj.phone || 'N/A'}`;
+
+            const customerSales = appState.sales.filter(s => s.customerName === customerName);
+            const customerPayments = appState.payments.filter(p => p.customerName === customerName);
+
+            const totalPurchased = customerSales.reduce((acc, s) => acc + s.grandTotal, 0);
+            const totalPaid = customerSales.reduce((acc, s) => acc + (s.paymentMethod === 'Due' ? 0 : s.grandTotal), 0) +
+                              customerPayments.reduce((acc, p) => acc + p.amount, 0);
+            const currentDue = appState.dues[customerName] ? appState.dues[customerName].amount : 0;
+
+            document.getElementById('ledger-summary-total').innerText = `৳ ${totalPurchased.toLocaleString()}`;
+            document.getElementById('ledger-summary-paid').innerText = `৳ ${totalPaid.toLocaleString()}`;
+            document.getElementById('ledger-summary-due').innerText = `৳ ${currentDue.toLocaleString()}`;
+
+            // Combine records for ledger statement
+            let records = [];
+            customerSales.forEach(s => {
+                records.push({
+                    date: s.date,
+                    desc: `বিক্রি মেমো (#${s.id}) - ${s.paymentMethod}`,
+                    total: s.grandTotal,
+                    paid: s.paymentMethod === 'Due' ? 0 : s.grandTotal,
+                    due: s.paymentMethod === 'Due' ? s.grandTotal : 0
+                });
+            });
+
+            customerPayments.forEach(p => {
+                records.push({
+                    date: p.date,
+                    desc: `বাকি জমা গ্রহণ (#${p.id})`,
+                    total: 0,
+                    paid: p.amount,
+                    due: -p.amount
+                });
+            });
+
+            records.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const tbody = document.getElementById('ledger-modal-tbody');
+            if (records.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">কোনো লেনদেন রেকর্ড পাওয়া যায়নি</td></tr>`;
+            } else {
+                tbody.innerHTML = records.map(r => `
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td class="p-2 text-[11px] text-gray-500">${new Date(r.date).toLocaleString('bn-BD')}</td>
+                        <td class="p-2 font-medium">${r.desc}</td>
+                        <td class="p-2 text-right font-bold text-gray-800 dark:text-white">${r.total ? '৳ ' + r.total.toLocaleString() : '-'}</td>
+                        <td class="p-2 text-right font-bold text-emerald-600 dark:text-emerald-400">${r.paid ? '৳ ' + r.paid.toLocaleString() : '-'}</td>
+                        <td class="p-2 text-right font-bold text-red-500">${r.due > 0 ? '৳ ' + r.due.toLocaleString() : (r.due < 0 ? '-৳ ' + Math.abs(r.due).toLocaleString() : '-')}</td>
+                    </tr>
+                `).join('');
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeLedgerModal() {
+            document.getElementById('ledger-modal').classList.add('hidden');
+        }
+
+        // Expense Functions
+        function toggleStaffInput() {
+            const expType = document.getElementById('expense-type')?.value;
+            const container = document.getElementById('staff-name-container');
+            if (container) {
+                if (expType === 'কর্মচারী বেতন') {
+                    container.classList.remove('hidden');
+                } else {
+                    container.classList.add('hidden');
+                }
+            }
+        }
+
+        function setExpenseTypePreset(type) {
+            const select = document.getElementById('expense-type');
+            if (select) {
+                select.value = type;
+                toggleStaffInput();
+            }
+        }
+
+        function addExpense(e) {
+            e.preventDefault();
+            const type = document.getElementById('expense-type').value;
+            const titleInput = document.getElementById('expense-title').value.trim();
+            const staffName = type === 'কর্মচারী বেতন' ? document.getElementById('expense-staff-name').value.trim() : '';
+            const amount = parseFloat(document.getElementById('expense-amount').value) || 0;
+
+            if (amount <= 0) return;
+            if (type === 'কর্মচারী বেতন' && !staffName) {
+                showToast('কর্মচারীর নাম উল্লেখ করুন!', 'error');
+                return;
+            }
+
+            const title = titleInput || (type === 'কর্মচারী বেতন' ? `কর্মচারী বেতন (${staffName})` : type);
+
+            const newExpense = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: type,
+                title: title,
+                staffName: staffName,
+                amount: amount
+            };
+
+            appState.expenses.unshift(newExpense);
+            saveState();
+
+            document.getElementById('expense-title').value = '';
+            document.getElementById('expense-staff-name').value = '';
+            document.getElementById('expense-amount').value = '';
+
+            renderExpenses();
+            renderDashboard();
+            showToast('নতুন খরচ সফলভাবে যোগ করা হয়েছে');
+        }
+
+        function onExpenseDateChange() {
+            const dateVal = document.getElementById('expense-date-filter').value;
+            if (dateVal) {
+                document.getElementById('expense-month-filter').value = '';
+                document.getElementById('expense-active-filter-text').innerHTML = `বর্তমানে: <strong class="text-emerald-600 dark:text-emerald-400">${new Date(dateVal).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' })}</strong>-এর খরচ ফিল্টার করা হয়েছে`;
+            }
+            renderExpenses();
+        }
+
+        function onExpenseMonthChange() {
+            const monthVal = document.getElementById('expense-month-filter').value;
+            if (monthVal) {
+                document.getElementById('expense-date-filter').value = '';
+                const [year, month] = monthVal.split('-');
+                const monthName = new Date(year, month - 1).toLocaleDateString('bn-BD', { month: 'long', year: 'numeric' });
+                document.getElementById('expense-active-filter-text').innerHTML = `বর্তমানে: <strong class="text-purple-600 dark:text-purple-400">${monthName}</strong>-এর সমস্ত খরচ প্রদর্শিত হচ্ছে`;
+            }
+            renderExpenses();
+        }
+
+        function setExpenseFilterToday() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const dateInput = document.getElementById('expense-date-filter');
+            if (dateInput) {
+                dateInput.value = todayStr;
+                onExpenseDateChange();
+            }
+        }
+
+        function clearExpenseFilters() {
+            document.getElementById('expense-date-filter').value = '';
+            document.getElementById('expense-month-filter').value = '';
+            document.getElementById('expense-active-filter-text').innerHTML = `বর্তমানে: **সমস্ত হিসাব** প্রদর্শিত হচ্ছে`;
+            renderExpenses();
+        }
+
+        function renderExpenses() {
+            const tbody = document.getElementById('expense-table-body');
+            if (!tbody) return;
+
+            const selectedDate = document.getElementById('expense-date-filter')?.value;
+            const selectedMonth = document.getElementById('expense-month-filter')?.value;
+
+            let filteredExpenses = appState.expenses;
+
+            if (selectedDate) {
+                filteredExpenses = appState.expenses.filter(exp => exp.date.startsWith(selectedDate));
+            } else if (selectedMonth) {
+                filteredExpenses = appState.expenses.filter(exp => exp.date.startsWith(selectedMonth));
+            }
+
+            // Calculate Totals
+            const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const totalSalary = filteredExpenses
+                .filter(e => e.type === 'কর্মচারী বেতন' || (e.title && e.title.toLowerCase().includes('বেতন')))
+                .reduce((sum, e) => sum + e.amount, 0);
+
+            const totalEl = document.getElementById('expense-monthly-total');
+            if (totalEl) totalEl.innerText = `৳ ${totalAmount.toLocaleString()}`;
+
+            const salaryEl = document.getElementById('expense-monthly-salary');
+            if (salaryEl) salaryEl.innerText = `৳ ${totalSalary.toLocaleString()}`;
+
+            if (filteredExpenses.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">কোনো খরচের রেকর্ড পাওয়া যায়নি</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filteredExpenses.map(exp => {
+                const isSalary = exp.type === 'কর্মচারী বেতন' || (exp.title && exp.title.includes('বেতন'));
+                const staff = exp.staffName || '-';
+
+                return `
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td class="p-3 text-xs">${new Date(exp.date).toLocaleString('bn-BD')}</td>
+                        <td class="p-3 font-semibold text-gray-800 dark:text-white">
+                            <span class="${isSalary ? 'text-purple-600 dark:text-purple-400' : ''}">${exp.title}</span>
+                        </td>
+                        <td class="p-3">
+                            ${staff !== '-' 
+                                ? `<button onclick="openStaffSalaryLedger('${staff.replace(/'/g, "\\'")}')" class="px-2.5 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded-full text-xs font-bold hover:underline flex items-center space-x-1">
+                                    <i class="fa-solid fa-user-check text-[10px]"></i> <span>${staff}</span>
+                                   </button>` 
+                                : '<span class="text-gray-400 text-xs">-</span>'
+                            }
+                        </td>
+                        <td class="p-3 text-right font-bold text-red-600">৳ ${exp.amount.toLocaleString()}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="deleteExpense(${exp.id})" class="text-red-500 hover:text-red-700 text-xs p-1">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openStaffSalaryLedger(staffName) {
+            const modal = document.getElementById('ledger-modal');
+            if (!modal) return;
+
+            const staffSalaryRecords = appState.expenses.filter(e => e.staffName && e.staffName.toLowerCase() === staffName.toLowerCase());
+            const totalPaid = staffSalaryRecords.reduce((sum, e) => sum + e.amount, 0);
+
+            document.getElementById('ledger-modal-title').innerText = `স্টাফ বেতন বিবরণী (Salary Ledger): ${staffName}`;
+            document.getElementById('ledger-modal-subtitle').innerText = `মোট বেতন প্রদানের সংখ্যা: ${staffSalaryRecords.length} বার`;
+
+            document.getElementById('ledger-summary-total').innerText = `৳ ${totalPaid.toLocaleString()}`;
+            document.getElementById('ledger-summary-paid').innerText = `৳ ${totalPaid.toLocaleString()}`;
+            document.getElementById('ledger-summary-due').innerText = `৳ 0 (পরিশোধিত)`;
+
+            const tbody = document.getElementById('ledger-modal-tbody');
+            if (staffSalaryRecords.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">কোনো বেতন প্রদানের ইতিহাস পাওয়া যায়নি</td></tr>`;
+            } else {
+                tbody.innerHTML = staffSalaryRecords.map(e => `
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td class="p-2 text-[11px] text-gray-500">${new Date(e.date).toLocaleString('bn-BD')}</td>
+                        <td class="p-2 font-medium">${e.title} (${e.staffName})</td>
+                        <td class="p-2 text-right font-bold text-purple-600">৳ ${e.amount.toLocaleString()}</td>
+                        <td class="p-2 text-right font-bold text-emerald-600">৳ ${e.amount.toLocaleString()}</td>
+                        <td class="p-2 text-right text-emerald-600 font-semibold">পরিশোধিত</td>
+                    </tr>
+                `).join('');
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function deleteExpense(expId) {
+            if (confirm('আপনি কি এই খরচের হিসাবটি মুছে ফেলতে চান?')) {
+                appState.expenses = appState.expenses.filter(e => e.id !== expId);
+                saveState();
+                renderExpenses();
+                renderDashboard();
+                showToast('খরচের রেকর্ড মোছা হয়েছে');
+            }
+        }
+
+        // Reports View
         function renderReports() {
             const filter = document.getElementById('report-filter')?.value || 'month';
             const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
+            const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
             let filteredSales = appState.sales;
+            let filteredExpenses = appState.expenses;
 
             if (filter === 'today') {
-                const todayStr = now.toISOString().split('T')[0];
                 filteredSales = appState.sales.filter(s => s.date.startsWith(todayStr));
+                filteredExpenses = appState.expenses.filter(e => e.date.startsWith(todayStr));
             } else if (filter === 'month') {
-                const currentMonth = now.getMonth();
-                const currentYear = now.getFullYear();
-                filteredSales = appState.sales.filter(s => {
-                    const d = new Date(s.date);
-                    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-                });
+                filteredSales = appState.sales.filter(s => s.date.startsWith(currentMonthStr));
+                filteredExpenses = appState.expenses.filter(e => e.date.startsWith(currentMonthStr));
             }
 
-            const totalSales = filteredSales.reduce((acc, s) => acc + s.grandTotal, 0);
-            const totalCOGS = filteredSales.reduce((acc, s) => {
-                return acc + s.items.reduce((sum, item) => sum + (item.buyPrice * item.qty), 0);
+            const totalSales = filteredSales.reduce((sum, s) => sum + s.grandTotal, 0);
+            const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+            const cogs = filteredSales.reduce((sum, s) => {
+                return sum + s.items.reduce((iSum, i) => iSum + (i.buyPrice * i.qty), 0);
             }, 0);
-            const totalExpenses = appState.expenses.reduce((acc, e) => acc + e.amount, 0);
-            const netProfit = totalSales - (totalCOGS + totalExpenses);
+
+            const netProfit = totalSales - (cogs + totalExpenses);
 
             document.getElementById('report-total-sales').innerText = `৳ ${totalSales.toLocaleString()}`;
             document.getElementById('report-total-expenses').innerText = `৳ ${totalExpenses.toLocaleString()}`;
             document.getElementById('report-net-profit').innerText = `৳ ${netProfit.toLocaleString()}`;
 
             renderPaymentPieChart(filteredSales);
-            renderProfitDoughnutChart(totalSales, totalCOGS, totalExpenses);
+            renderProfitDoughnutChart(totalSales, totalExpenses, netProfit);
         }
 
         function renderPaymentPieChart(salesList) {
             const ctx = document.getElementById('paymentPieChart');
             if (!ctx) return;
 
-            const counts = { Cash: 0, bKash: 0, Nagad: 0, Due: 0 };
-            salesList.forEach(s => {
-                counts[s.paymentMethod] = (counts[s.paymentMethod] || 0) + s.grandTotal;
+            const methods = ['Cash', 'bKash', 'Nagad', 'Due'];
+            const labelsBn = ['নগদ', 'বিকাশ', 'নগদ অ্যাপ', 'বাকি'];
+            const methodTotals = methods.map(m => {
+                return salesList.filter(s => s.paymentMethod === m).reduce((sum, s) => sum + s.grandTotal, 0);
             });
-
-            const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
             if (paymentPieChartInstance) paymentPieChartInstance.destroy();
 
             paymentPieChartInstance = new Chart(ctx, {
                 type: 'pie',
-                plugins: [ChartDataLabels],
                 data: {
-                    labels: ['নগদ', 'বিকাশ', 'নগদ অ্যাপ', 'বাকি'],
+                    labels: labelsBn,
                     datasets: [{
-                        data: [counts.Cash, counts.bKash, counts.Nagad, counts.Due],
+                        data: methodTotals,
                         backgroundColor: ['#10b981', '#ec4899', '#f97316', '#ef4444']
                     }]
                 },
@@ -1835,70 +2101,60 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                font: { family: 'Hind Siliguri', size: 12 }
-                            }
-                        },
                         datalabels: {
-                            color: '#ffffff',
-                            font: { weight: 'bold', size: 13, family: 'Hind Siliguri' },
-                            formatter: (value) => {
-                                if (total === 0 || value === 0) return '';
-                                const percentage = ((value / total) * 100).toFixed(1);
-                                return percentage + '%';
+                            color: '#fff',
+                            font: { weight: 'bold', size: 11 },
+                            formatter: (val, context) => {
+                                const sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                if (sum === 0 || val === 0) return '';
+                                const percentage = ((val / sum) * 100).toFixed(1);
+                                return `${percentage}%`;
                             }
                         }
                     }
-                }
+                },
+                plugins: [ChartDataLabels]
             });
         }
 
-        function renderProfitDoughnutChart(sales, cogs, expenses) {
+        function renderProfitDoughnutChart(totalSales, totalExpenses, netProfit) {
             const ctx = document.getElementById('profitDoughnutChart');
             if (!ctx) return;
 
-            const profit = Math.max(0, sales - (cogs + expenses));
-            const total = cogs + expenses + profit;
-
             if (profitDoughnutChartInstance) profitDoughnutChartInstance.destroy();
+
+            const positiveProfit = Math.max(0, netProfit);
 
             profitDoughnutChartInstance = new Chart(ctx, {
                 type: 'doughnut',
-                plugins: [ChartDataLabels],
                 data: {
-                    labels: ['পণ্যের ক্রয়মূল্য', 'দোকানের খরচ', 'নিট লাভ'],
+                    labels: ['নিট লাভ', 'মোট খরচ'],
                     datasets: [{
-                        data: [cogs, expenses, profit],
-                        backgroundColor: ['#6b7280', '#ef4444', '#3b82f6']
+                        data: [positiveProfit, totalExpenses],
+                        backgroundColor: ['#3b82f6', '#ef4444']
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                font: { family: 'Hind Siliguri', size: 12 }
-                            }
-                        },
                         datalabels: {
-                            color: '#ffffff',
-                            font: { weight: 'bold', size: 13, family: 'Hind Siliguri' },
-                            formatter: (value) => {
-                                if (total === 0 || value === 0) return '';
-                                const percentage = ((value / total) * 100).toFixed(1);
-                                return percentage + '%';
+                            color: '#fff',
+                            font: { weight: 'bold', size: 11 },
+                            formatter: (val, context) => {
+                                const sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                if (sum === 0 || val === 0) return '';
+                                const percentage = ((val / sum) * 100).toFixed(1);
+                                return `${percentage}%`;
                             }
                         }
                     }
-                }
+                },
+                plugins: [ChartDataLabels]
             });
         }
 
-        // Settings - Customer Ledger
+        // Settings - Customer Ledger Management
         function addNewCustomerLedger(e) {
             e.preventDefault();
             const name = document.getElementById('setting-cust-name').value.trim();
@@ -1907,66 +2163,81 @@
 
             if (!name) return;
 
-            appState.customers[name] = { phone: phone };
+            appState.customers[name] = { phone: phone, initialDue: due };
+
             if (due > 0) {
-                appState.dues[name] = { phone: phone, amount: due };
+                if (!appState.dues[name]) {
+                    appState.dues[name] = { phone: phone, amount: 0 };
+                }
+                appState.dues[name].amount += due;
             }
 
             saveState();
+
             document.getElementById('setting-cust-name').value = '';
             document.getElementById('setting-cust-phone').value = '';
             document.getElementById('setting-cust-due').value = 0;
+
             renderSettingCustomers();
-            showToast('কাস্টমার লেজার তৈরি হয়েছে');
+            renderDueList();
+            showToast('নতুন কাস্টমার লেজার তৈরি হয়েছে');
         }
 
         function renderSettingCustomers() {
             const container = document.getElementById('setting-customer-list');
             if (!container) return;
 
-            const keys = Object.keys(appState.customers);
-            if (keys.length === 0) {
-                container.innerHTML = `<p class="text-xs text-gray-400 pt-1">কোনো কাস্টমার সংরক্ষিত নেই</p>`;
+            const customerNames = Object.keys(appState.customers);
+            if (customerNames.length === 0) {
+                container.innerHTML = `<p class="text-xs text-gray-400 py-2">কোনো সংরক্ষিত কাস্টমার লেজার নেই</p>`;
                 return;
             }
 
-            container.innerHTML = keys.map(name => {
-                const phone = appState.customers[name].phone || 'N/A';
-                const due = appState.dues[name] ? appState.dues[name].amount : 0;
+            container.innerHTML = customerNames.map(name => {
+                const info = appState.customers[name];
+                const currentDue = appState.dues[name] ? appState.dues[name].amount : 0;
                 return `
-                    <div class="flex justify-between items-center py-1.5 text-xs">
+                    <div class="py-2 flex justify-between items-center text-xs">
                         <div>
                             <span class="font-bold text-gray-800 dark:text-white block">${name}</span>
-                            <span class="text-gray-400 text-[10px]">${phone}</span>
+                            <span class="text-gray-400 text-[11px]">${info.phone || 'ফোন নম্বর নেই'}</span>
                         </div>
-                        <span class="font-semibold ${due > 0 ? 'text-red-500' : 'text-emerald-600'}">বাকি: ৳ ${due}</span>
+                        <div class="text-right">
+                            <span class="font-bold text-red-500 block">বাকি: ৳ ${currentDue.toLocaleString()}</span>
+                            <button onclick="openCustomerLedger('${name.replace(/'/g, "\\'")}')" class="text-emerald-600 hover:underline text-[11px]">লেজার দেখুন</button>
+                        </div>
                     </div>
                 `;
             }).join('');
         }
 
-        // Backup and Restore
+        // Data Export & Import
         function exportData() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState));
-            const dlAnchorElem = document.createElement('a');
-            dlAnchorElem.setAttribute("href", dataStr);
-            dlAnchorElem.setAttribute("download", `shop_backup_${new Date().toISOString().split('T')[0]}.json`);
-            dlAnchorElem.click();
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `shop_management_backup_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast('ডাটা ব্যাকআপ ডাউনলোড শুরু হয়েছে');
         }
 
-        function importData(event) {
+        function importData(e) {
             const fileReader = new FileReader();
-            fileReader.onload = function(e) {
+            fileReader.onload = function (event) {
                 try {
-                    const importedState = JSON.parse(e.target.result);
+                    const importedState = JSON.parse(event.target.result);
                     if (importedState.products) appState = importedState;
                     saveState();
                     location.reload();
                 } catch (err) {
-                    showToast('ফাইল রিস্টোর করতে সমস্যা হয়েছে', 'error');
+                    showToast('অকার্যকর ফাইল ফরম্যাট!', 'error');
                 }
             };
-            fileReader.readAsText(event.target.files[0]);
+            if (e.target.files[0]) {
+                fileReader.readAsText(e.target.files[0]);
+            }
         }
     </script>
 </body>
