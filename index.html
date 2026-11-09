@@ -1817,10 +1817,13 @@
                 counts[s.paymentMethod] = (counts[s.paymentMethod] || 0) + s.grandTotal;
             });
 
+            const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
             if (paymentPieChartInstance) paymentPieChartInstance.destroy();
 
             paymentPieChartInstance = new Chart(ctx, {
                 type: 'pie',
+                plugins: [ChartDataLabels],
                 data: {
                     labels: ['নগদ', 'বিকাশ', 'নগদ অ্যাপ', 'বাকি'],
                     datasets: [{
@@ -1830,7 +1833,24 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { family: 'Hind Siliguri', size: 12 }
+                            }
+                        },
+                        datalabels: {
+                            color: '#ffffff',
+                            font: { weight: 'bold', size: 13, family: 'Hind Siliguri' },
+                            formatter: (value) => {
+                                if (total === 0 || value === 0) return '';
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return percentage + '%';
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -1840,11 +1860,13 @@
             if (!ctx) return;
 
             const profit = Math.max(0, sales - (cogs + expenses));
+            const total = cogs + expenses + profit;
 
             if (profitDoughnutChartInstance) profitDoughnutChartInstance.destroy();
 
             profitDoughnutChartInstance = new Chart(ctx, {
                 type: 'doughnut',
+                plugins: [ChartDataLabels],
                 data: {
                     labels: ['পণ্যের ক্রয়মূল্য', 'দোকানের খরচ', 'নিট লাভ'],
                     datasets: [{
@@ -1854,7 +1876,24 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { family: 'Hind Siliguri', size: 12 }
+                            }
+                        },
+                        datalabels: {
+                            color: '#ffffff',
+                            font: { weight: 'bold', size: 13, family: 'Hind Siliguri' },
+                            formatter: (value) => {
+                                if (total === 0 || value === 0) return '';
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return percentage + '%';
+                            }
+                        }
+                    }
                 }
             });
         }
