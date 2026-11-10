@@ -2743,7 +2743,7 @@
     arr(R.products).forEach(rp => {
       const lp = a.products.find(p => p.id === rp.id);
       if (!lp) { if (!dP.has(rp.id)) { a.products.push(rp); ch = true; } }
-      else if ((rp.u || 0) > (lp.u || 0)) { ['name', 'category', 'unit', 'buyPrice', 'sellPrice', 'alertLevel', 'barcode', 'u'].forEach(k => lp[k] = rp[k]); ch = true; }
+      else if ((rp.u || 0) > (lp.u || 0)) { ['name', 'category', 'unit', 'buyPrice', 'sellPrice', 'alertLevel', 'barcode', 'expiry', 'wholesale', 'u'].forEach(k => lp[k] = rp[k]); ch = true; }
     });
     const rc = dec(R.customers); Object.keys(rc).forEach(n => { if (!a.customers[n]) { a.customers[n] = rc[n]; ch = true; } });
     if (ch) {
@@ -3013,63 +3013,6 @@
     $('dash-cash-net').textContent = '৳ ' + r3(cash - ex).toLocaleString();
   };
 
-  // ২. পিন লক (মালিক / স্টাফ)
-  const PK = 'dm_pin', pins = () => JSON.parse(localStorage.getItem(PK) || '{}');
-  const hash = async s => {
-    const d = new TextEncoder().encode('dm|' + s);
-    if (window.crypto && crypto.subtle) return [...new Uint8Array(await crypto.subtle.digest('SHA-256', d))].map(x => x.toString(16).padStart(2, '0')).join('');
-    let h = 5381; for (const c of s) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return 'x' + h;
-  };
-  let role = 'owner', tries = 0, idle;
-  const STAFF_OK = ['pos', 'memos', 'inventory', 'due'];
-  document.body.insertAdjacentHTML('beforeend', `<div id="lock" class="hidden fixed inset-0 z-[100] bg-emerald-700 flex items-center justify-center p-4"><div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-xs text-center space-y-3"><div class="text-4xl">🔒</div><h2 class="font-bold text-lg">পিন দিন</h2><input id="lock-pin" type="password" inputmode="numeric" maxlength="6" class="w-full text-center tracking-widest text-xl px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700"><p id="lock-msg" class="text-xs text-red-500 h-4"></p><button id="lock-btn" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg">খুলুন</button></div></div>`);
-  function applyRole() {
-    const staff = role === 'staff';
-    document.querySelectorAll('.nav-btn,#bnav button').forEach(b => {
-      const m = (b.getAttribute('onclick') || '').match(/switchTab\('(\w+)'\)/);
-      b.style.display = staff && m && !STAFF_OK.includes(m[1]) ? 'none' : '';
-    });
-    const cb = document.querySelector('#memo-view-modal button[onclick="cancelSale()"]'); if (cb) cb.style.display = staff ? 'none' : '';
-    switchTab(staff ? 'pos' : 'dashboard');
-  }
-  function lockApp() {
-    if (!pins().owner) return;
-    $('lock').classList.remove('hidden'); $('lock-pin').value = ''; $('lock-msg').textContent = ''; setTimeout(() => $('lock-pin').focus(), 50);
-  }
-  window.lockApp = lockApp;
-  async function tryUnlock() {
-    const v = $('lock-pin').value, P = pins();
-    if (tries >= 5) return $('lock-msg').textContent = 'অনেকবার ভুল। ৩০ সেকেন্ড পরে চেষ্টা করুন';
-    const h = await hash(v);
-    if (h === P.owner) role = 'owner'; else if (P.staff && h === P.staff) role = 'staff';
-    else { tries++; if (tries >= 5) setTimeout(() => tries = 0, 30000); return $('lock-msg').textContent = 'ভুল পিন'; }
-    tries = 0; $('lock').classList.add('hidden'); applyRole(); resetIdle();
-  }
-  $('lock-btn').onclick = tryUnlock;
-  $('lock-pin').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
-  function resetIdle() { clearTimeout(idle); if (pins().owner) idle = setTimeout(lockApp, 10 * 60 * 1000); }
-  ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, resetIdle, { passive: true }));
-  const _stp = switchTab;
-  switchTab = function (t) {
-    if (role === 'staff' && !STAFF_OK.includes(t)) t = 'pos';
-    _stp(t);
-    document.querySelectorAll('#bnav button').forEach(b => b.classList.toggle('text-emerald-600', (b.getAttribute('onclick') || '').includes(`'${t}'`)));
-  };
-  $('theme-icon').closest('button').insertAdjacentHTML('beforebegin', '<button onclick="lockApp()" title="লক করুন" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700">🔒</button>');
-  savePins = async function () {
-    const o = $('pin-owner').value.trim(), s = $('pin-staff').value.trim();
-    if (!/^\d{4,6}$/.test(o)) return showToast('মালিকের পিন ৪–৬ সংখ্যার হতে হবে', 'error');
-    if (s && (!/^\d{4,6}$/.test(s) || s === o)) return showToast('স্টাফ পিন ৪–৬ সংখ্যার ও মালিকের থেকে আলাদা হতে হবে', 'error');
-    localStorage.setItem(PK, JSON.stringify({ owner: await hash(o), staff: s ? await hash(s) : '' }));
-    $('pin-owner').value = $('pin-staff').value = ''; showToast('পিন সেভ হয়েছে'); resetIdle();
-  };
-  removePins = () => { if (confirm('পিন লক বন্ধ করবেন?')) { localStorage.removeItem(PK); showToast('পিন বন্ধ করা হয়েছে'); } };
-  $('view-settings').firstElementChild.insertAdjacentHTML('beforeend', `<div class="${box} space-y-3"><h3 class="font-bold text-lg border-b pb-2">🔒 পিন লক</h3>
-    <input id="pin-owner" type="password" inputmode="numeric" maxlength="6" placeholder="মালিকের পিন (৪–৬ সংখ্যা)" class="inp">
-    <input id="pin-staff" type="password" inputmode="numeric" maxlength="6" placeholder="স্টাফের পিন (ঐচ্ছিক)" class="inp">
-    <div class="flex gap-2"><button onclick="savePins()" class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg">পিন সেভ করুন</button><button onclick="removePins()" class="px-3 py-1.5 bg-gray-500 text-white text-xs font-semibold rounded-lg">পিন বন্ধ করুন</button></div>
-    <p class="text-[11px] text-gray-400">স্টাফ শুধু বিক্রি, মেমো, স্টক ও বাকি জমা দেখতে পারবে। লাভ, খরচ, রিপোর্ট, সেটিংস ও মেমো বাতিল শুধু মালিক। ১০ মিনিট নিষ্ক্রিয় থাকলে অটো লক হয়। এটা সাধারণ ব্যবহারকারীর জন্য সুরক্ষা; ব্রাউজারের টুল জানা কেউ ডেটা দেখতে পারে।</p></div>`);
-
   // ৩. ব্যবহারের সুবিধা: নিচের নেভিগেশন (মোবাইল)
   document.body.insertAdjacentHTML('beforeend', `<nav id="bnav" class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex">${[['dashboard', 'fa-chart-line', 'ড্যাশবোর্ড'], ['pos', 'fa-cart-shopping', 'বিক্রি'], ['memos', 'fa-receipt', 'মেমো'], ['inventory', 'fa-boxes-stacked', 'স্টক']].map(([t, i, l]) => `<button onclick="switchTab('${t}')" class="flex-1 py-2 text-[11px] flex flex-col items-center"><i class="fa-solid ${i} text-lg"></i>${l}</button>`).join('')}<button onclick="toggleSidebar()" class="flex-1 py-2 text-[11px] flex flex-col items-center"><i class="fa-solid fa-bars text-lg"></i>মেনু</button></nav>`);
   document.querySelector('main').classList.add('pb-20', 'md:pb-6');
@@ -3096,8 +3039,452 @@
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
-  // শুরুতে লক
-  if (pins().owner) lockApp(); else resetIdle();
+})();
+
+</script>
+<script>
+/* v5: ক্লোজিং, মেয়াদ, বাকির সীমা/বয়স, আংশিক ফেরত, হোল্ড বিল, পাইকারি দাম, স্টক গণনা, রিপোর্ট টুলস */
+(function () {
+  const $ = id => document.getElementById(id);
+  const p2 = n => String(n).padStart(2, '0');
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const ymd = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+  const money = n => '৳ ' + r3(n).toLocaleString();
+  const today = () => ymd(new Date());
+  const staff = () => window.dmRole && dmRole() === 'staff';
+  const box = 'bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm';
+  const lab = 'block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1';
+  const sortSales = () => appState.sales.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // ---- পণ্য: পাইকারি দাম + মেয়াদ ----
+  $('prod-sell-price').closest('.grid').insertAdjacentHTML('afterend', `<div class="grid grid-cols-2 gap-2"><div><label class="${lab}">পাইকারি দাম (ঐচ্ছিক)</label><input id="prod-wholesale" type="number" min="0" step="any" class="inp"></div><div><label class="${lab}">মেয়াদ শেষের তারিখ (ঐচ্ছিক)</label><input id="prod-expiry" type="date" class="inp"></div></div>`);
+  const _op = openProductModal;
+  openProductModal = function (p) { _op(p); $('prod-wholesale').value = p?.wholesale || ''; $('prod-expiry').value = p?.expiry || ''; };
+  const _sp = saveProduct;
+  saveProduct = function (e) {
+    const id = $('prod-id').value, w = parseFloat($('prod-wholesale').value) || 0, x = $('prod-expiry').value;
+    _sp(e);
+    if (!$('product-modal').classList.contains('hidden')) return;
+    const p = id ? appState.products.find(q => String(q.id) === id) : appState.products[0];
+    if (p) { p.wholesale = w; p.expiry = x; p.u = Date.now(); saveState(); }
+  };
+
+  // ---- বিক্রি: পাইকারি টগল, তারিখ, হোল্ড ----
+  $('pos-customer-phone').insertAdjacentHTML('afterend', `<div class="mt-2 flex flex-wrap items-center gap-2 text-xs"><label class="flex items-center gap-1"><input type="checkbox" id="pos-tier"> পাইকারি দর</label><span id="pos-date-wrap" class="flex items-center gap-1">তারিখ: <input type="date" id="pos-date" class="inp !w-auto !py-0.5"></span><button onclick="holdBill()" class="px-2 py-1 bg-amber-500 text-white rounded font-semibold">⏸ হোল্ড</button></div><div id="hold-list" class="mt-1 flex flex-wrap gap-1"></div>`);
+  $('pos-date').max = today();
+  const holds = () => JSON.parse(localStorage.getItem('dm_holds') || '[]');
+  function renderHolds() { $('hold-list').innerHTML = holds().map(b => `<button onclick="resumeBill(${b.id})" class="px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs">▶ ${esc(b.name || 'বিল')} (${b.cart.length}টি, ${esc(b.t)})</button>`).join(''); }
+  holdBill = function () {
+    if (!appState.cart.length) return showToast('কার্ট খালি', 'error');
+    const h = holds(); h.push({ id: Date.now(), cart: appState.cart, name: $('pos-customer-name').value, phone: $('pos-customer-phone').value, discount: $('pos-discount').value, t: new Date().toLocaleTimeString('bn-BD') });
+    localStorage.setItem('dm_holds', JSON.stringify(h)); clearCart(); $('pos-customer-name').value = $('pos-customer-phone').value = ''; renderHolds(); showToast('বিল হোল্ডে রাখা হয়েছে');
+  };
+  resumeBill = function (id) {
+    if (appState.cart.length) return showToast('আগে বর্তমান কার্ট শেষ বা হোল্ড করুন', 'error');
+    const h = holds(), b = h.find(x => x.id === id); if (!b) return;
+    appState.cart = b.cart; $('pos-customer-name').value = b.name; $('pos-customer-phone').value = b.phone; $('pos-discount').value = b.discount;
+    localStorage.setItem('dm_holds', JSON.stringify(h.filter(x => x.id !== id))); renderCart(); renderHolds();
+  };
+  renderHolds();
+  const _atc = addToCart;
+  addToCart = function (id) {
+    const had = appState.cart.some(c => c.id === id); _atc(id);
+    if (!had && $('pos-tier').checked) { const i = appState.cart.find(c => c.id === id), p = appState.products.find(x => x.id === id); if (i && p && p.wholesale > 0) { i.sellPrice = p.wholesale; renderCart(); } }
+  };
+  $('pos-tier').onchange = () => { const on = $('pos-tier').checked; appState.cart.forEach(i => { const p = appState.products.find(x => x.id === i.id); if (p) i.sellPrice = on && p.wholesale > 0 ? p.wholesale : p.sellPrice; }); renderCart(); };
+
+  // বাকির জমায় পেমেন্ট মাধ্যম
+  $('due-pay-amount').parentElement.insertAdjacentHTML('afterend', '<select id="due-method" class="inp"><option value="Cash">নগদ</option><option value="bKash">বিকাশ</option><option value="Nagad">নগদ অ্যাপ</option></select>');
+  const _pd = payDue;
+  payDue = function (e) { const m = $('due-method').value, n = appState.payments.length; _pd(e); if (appState.payments.length > n) { appState.payments[appState.payments.length - 1].method = m; saveState(); } };
+
+  // চেকআউট: বাকির সীমা, আগের তারিখ, পেমেন্ট মাধ্যম রেকর্ড
+  const _pc = processCheckout;
+  processCheckout = function () {
+    const cart = appState.cart; if (!cart.length) return _pc();
+    const name = $('pos-customer-name').value.trim(), m = appState.selectedPaymentMethod, pv = $('pos-paid').value;
+    const gt = Math.max(0, r3(sum(cart, i => i.sellPrice * i.qty) - (parseFloat($('pos-discount').value) || 0)));
+    let paid = m === 'Due' ? (parseFloat(pv) || 0) : (pv === '' ? gt : parseFloat(pv) || 0); paid = Math.min(paid, gt);
+    const due = r3(gt - paid), lim = +localStorage.getItem('dm_limit') || 0;
+    if (lim && due > 0 && name) { const cur = (appState.dues[name] || {}).amount || 0; if (cur + due > lim && !confirm(`${name}-এর বাকি হবে ৳${cur + due} (সীমা ৳${lim})। তবুও দেবেন?`)) return; }
+    const date = staff() ? '' : $('pos-date').value, ns = appState.sales.length, np = appState.payments.length;
+    _pc();
+    if (appState.sales.length > ns) {
+      const s = appState.sales[0];
+      if (date && date !== today()) { s.date = date + 'T12:00:00.000'; appState.payments.slice(np).forEach(p => p.date = s.date); sortSales(); }
+      appState.payments.slice(np).forEach(p => p.method = m === 'Due' ? 'Cash' : m);
+      $('pos-date').value = ''; $('pos-tier').checked = false; saveState();
+    }
+  };
+
+  // ---- আংশিক ফেরত (নেগেটিভ মেমো হিসেবে সংরক্ষিত, তাই সব হিসাবে মিলে যায়) ----
+  $('memo-view-modal').querySelector('.border-t').insertAdjacentHTML('afterbegin', '<button onclick="partialReturn()" class="px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-semibold">আংশিক ফেরত</button>');
+  const curSale = () => { const m = ($('modal-memo-content').innerText || '').match(/(INV|RET)-\d+/); return m && appState.sales.find(s => s.id === m[0]); };
+  partialReturn = function () {
+    const s = curSale(); if (!s || s.isReturn) return showToast('ফেরত শুধু বিক্রির মেমোতে', 'error');
+    const back = {}; appState.sales.filter(x => x.refId === s.id).forEach(x => x.items.forEach(i => back[i.id] = (back[i.id] || 0) + Math.abs(i.qty)));
+    const rows = s.items.map(i => ({ i, max: r3(i.qty - (back[i.id] || 0)) })).filter(r => r.max > 0);
+    if (!rows.length) return showToast('সব পণ্য আগেই ফেরত হয়েছে', 'error');
+    const ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl p-5 w-full max-w-sm space-y-3"><h3 class="font-bold">ফেরত নিন: ${esc(s.id)}</h3>${rows.map((r, k) => `<div class="flex justify-between items-center text-sm"><span>${esc(r.i.name)} (সর্বোচ্চ ${r.max})</span><input type="number" min="0" max="${r.max}" step="any" data-k="${k}" class="inp !w-24"></div>`).join('')}<div class="flex gap-2 justify-end"><button id="ret-no" class="px-3 py-1.5 bg-gray-300 rounded text-sm">বাতিল</button><button id="ret-ok" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm font-bold">ফেরত নিন</button></div></div>`;
+    document.body.appendChild(ov); $('ret-no').onclick = () => ov.remove();
+    $('ret-ok').onclick = () => {
+      const ratio = s.subtotal ? s.grandTotal / s.subtotal : 1, items = [];
+      ov.querySelectorAll('input').forEach(inp => { const r = rows[+inp.dataset.k], q = Math.min(parseFloat(inp.value) || 0, r.max); if (q > 0) items.push({ ...r.i, qty: -q }); });
+      if (!items.length) return ov.remove();
+      const amt = r3(sum(items, i => i.sellPrice * i.qty) * ratio);
+      const ret = { id: 'RET-' + Date.now().toString().slice(-6), date: new Date().toISOString(), customerName: s.customerName, customerPhone: s.customerPhone, items, subtotal: amt, discount: 0, grandTotal: amt, paymentMethod: s.paymentMethod, refId: s.id, isReturn: true };
+      items.forEach(i => { const p = appState.products.find(x => x.id === i.id); if (p) p.stock = r3(p.stock - i.qty); });
+      if (s.paymentMethod === 'Due') { const d = appState.dues[s.customerName]; if (d) d.amount = Math.max(0, r3(d.amount + amt)); }
+      appState.sales.unshift(ret); saveState(); ov.remove(); closeMemoModal(); renderMemosSection(); renderDashboard(); renderPOSProducts(); showToast('ফেরত নেওয়া হয়েছে');
+    };
+  };
+
+  // ---- নতুন ট্যাব: ক্লোজিং ও টুলস (শুধু মালিক) ----
+  const nb = $('nav-due').cloneNode(true);
+  nb.id = 'nav-tools'; nb.setAttribute('onclick', "switchTab('tools')"); nb.querySelector('i').className = 'fa-solid fa-toolbox w-5'; nb.querySelector('span').textContent = 'ক্লোজিং ও টুলস'; $('nav-due').after(nb);
+  document.querySelector('main').insertAdjacentHTML('beforeend', '<section id="view-tools" class="hidden space-y-6"><div id="tools-body" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div></section>');
+  const card = (t, b) => `<div class="${box}"><h3 class="font-bold text-lg mb-3">${t}</h3>${b}</div>`;
+  const CL = () => JSON.parse(localStorage.getItem('dm_closings') || '{}');
+  let CC = null;
+  function cashCalc(d) {
+    const S = appState.sales.filter(s => ymd(new Date(s.date)) === d), P = appState.payments.filter(p => ymd(new Date(p.date)) === d), by = { Cash: 0, bKash: 0, Nagad: 0 };
+    S.filter(s => s.paymentMethod !== 'Due').forEach(s => by[s.paymentMethod] = (by[s.paymentMethod] || 0) + s.grandTotal);
+    P.forEach(p => { const m = p.method || 'Cash'; by[m] = (by[m] || 0) + p.amount; });
+    return { by, ex: sum(appState.expenses.filter(e => ymd(new Date(e.date)) === d), e => e.amount), pu: sum(appState.purchases.filter(x => ymd(new Date(x.date)) === d), x => x.paid || 0) };
+  }
+  calcClose = function () {
+    const o = +$('cc-open').value || 0, c = $('cc-count').value, exp = o + CC.by.Cash - CC.ex - CC.pu;
+    $('cc-res').innerHTML = `ড্রয়ারে থাকার কথা: <b>${money(exp)}</b>` + (c === '' ? '' : ` — ${(+c - exp) === 0 ? '<b class="text-emerald-600">মিলেছে ✔</b>' : (+c > exp ? `<b class="text-blue-600">বাড়তি ${money(+c - exp)}</b>` : `<b class="text-red-600">ঘাটতি ${money(exp - c)}</b>`)}`);
+  };
+  saveClose = function () {
+    const o = +$('cc-open').value || 0, c = $('cc-count').value; if (c === '') return showToast('গোনা নগদ লিখুন', 'error');
+    const cl = CL(), exp = o + CC.by.Cash - CC.ex - CC.pu; cl[today()] = { opening: o, counted: +c, expected: r3(exp), diff: r3(+c - exp) };
+    localStorage.setItem('dm_closings', JSON.stringify(cl)); showToast('আজকের ক্লোজিং সেভ হয়েছে'); renderTools();
+  };
+  function aging() {
+    return Object.entries(appState.dues).filter(([, d]) => d.amount > 0).map(([n, d]) => {
+      const dueS = appState.sales.filter(s => s.customerName === n && s.paymentMethod === 'Due');
+      let credit = sum(appState.payments.filter(p => p.customerName === n), p => p.amount) + sum(dueS.filter(s => s.grandTotal < 0), s => -s.grandTotal);
+      const items = [{ v: (appState.customers[n] || {}).initialDue || 0, age: 999 }, ...dueS.filter(s => s.grandTotal > 0).sort((a, b) => new Date(a.date) - new Date(b.date)).map(s => ({ v: s.grandTotal, age: Math.floor((Date.now() - new Date(s.date)) / 864e5) }))];
+      const b = [0, 0, 0, 0];
+      items.forEach(it => { let v = it.v; const use = Math.min(v, credit); v -= use; credit -= use; if (v > 0) b[it.age <= 30 ? 0 : it.age <= 60 ? 1 : it.age < 900 ? 2 : 3] += v; });
+      return [n, b, d.amount];
+    });
+  }
+  const mstat = (y, m) => { const k = `${y}-${p2(m + 1)}`, S = appState.sales.filter(s => ymd(new Date(s.date)).startsWith(k)), rev = sum(S, s => s.grandTotal), ex = sum(appState.expenses.filter(e => ymd(new Date(e.date)).startsWith(k)), e => e.amount); return { rev, ex, profit: rev - sum(S, s => sum(s.items, i => i.buyPrice * i.qty)) - ex }; };
+  const chg = (a, b) => b ? `${a >= b ? '▲' : '▼'} ${Math.abs(Math.round((a - b) / Math.abs(b) * 100))}%` : '-';
+  slowList = function () {
+    const days = +$('slow-days').value || 30, last = {};
+    appState.sales.filter(s => !s.isReturn).forEach(s => s.items.forEach(i => { const t = +new Date(s.date); if (!last[i.id] || t > last[i.id]) last[i.id] = t; }));
+    const L = appState.products.filter(p => p.stock > 0 && (!last[p.id] || (Date.now() - last[p.id]) / 864e5 > days));
+    $('slow-out').innerHTML = L.length ? L.map(p => `<div class="flex justify-between border-t border-gray-100 dark:border-gray-700 py-1"><span>${esc(p.name)}</span><span class="text-gray-500">স্টক ${p.stock} · ${last[p.id] ? new Date(last[p.id]).toLocaleDateString('bn-BD') : 'কখনো বিক্রি হয়নি'}</span></div>`).join('') : '<p class="text-gray-400">সব পণ্যই চলছে 👍</p>';
+  };
+  lowWA = function () {
+    const L = appState.products.filter(p => p.stock <= p.alertLevel);
+    if (!L.length) return showToast('কম স্টকের পণ্য নেই');
+    open('https://wa.me/?text=' + encodeURIComponent(`${appState.settings.name} - মাল দরকার:\n` + L.map(p => `• ${p.name} (আছে ${p.stock} ${p.unit || ''})`).join('\n')));
+  };
+  startCount = function () {
+    $('count-box').innerHTML = `<div class="max-h-72 overflow-y-auto"><table class="w-full text-sm"><tr class="text-left text-gray-500"><th>পণ্য</th><th>সিস্টেম</th><th>আসল গণনা</th></tr>${appState.products.map(p => `<tr class="border-t border-gray-100 dark:border-gray-700"><td>${esc(p.name)}</td><td>${p.stock}</td><td><input type="number" step="any" min="0" data-id="${p.id}" class="inp !w-24"></td></tr>`).join('')}</table></div><button onclick="applyCount()" class="mt-2 px-3 py-1.5 bg-emerald-600 text-white rounded text-sm font-bold">মিলিয়ে নিন</button>`;
+  };
+  applyCount = function () {
+    let n = 0;
+    $('count-box').querySelectorAll('input').forEach(i => {
+      const p = appState.products.find(x => String(x.id) === i.dataset.id), v = parseFloat(i.value);
+      if (!p || i.value === '' || isNaN(v) || v < 0 || v === p.stock) return;
+      appState.adj.push({ id: 'A' + Date.now() + '_' + n, pid: p.id, d: r3(v - p.stock) }); p.stock = r3(v); p.u = Date.now(); n++;
+    });
+    saveState(); renderInventory(); renderPOSProducts(); $('count-box').innerHTML = ''; showToast(`${n}টি পণ্যের স্টক মেলানো হয়েছে`);
+  };
+  setLimit = () => { localStorage.setItem('dm_limit', +$('lim').value || 0); showToast('বাকির সীমা সেভ হয়েছে'); };
+  renderTools = function () {
+    const d = today(), cl = CL(), last = Object.keys(cl).filter(k => k < d).sort().pop();
+    CC = cashCalc(d); const open = cl[d] ? cl[d].opening : (last ? cl[last].counted : 0), by = CC.by;
+    const ex = appState.products.filter(p => p.expiry).map(p => ({ p, days: Math.round((new Date(p.expiry + 'T00:00:00') - new Date(d + 'T00:00:00')) / 864e5) })).filter(x => x.days <= 30).sort((a, b) => a.days - b.days);
+    const cur = mstat(new Date().getFullYear(), new Date().getMonth()), pv = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), prev = mstat(pv.getFullYear(), pv.getMonth());
+    const ag = aging(), lim = +localStorage.getItem('dm_limit') || 0;
+    $('tools-body').innerHTML =
+      card('💵 দৈনিক ক্যাশ ক্লোজিং', `<div class="grid grid-cols-2 gap-2"><div><label class="${lab}">সকালে ড্রয়ারে ছিল (৳)</label><input id="cc-open" type="number" step="any" min="0" value="${open}" oninput="calcClose()" class="inp"></div><div><label class="${lab}">এখন গুনে পেলাম (৳)</label><input id="cc-count" type="number" step="any" min="0" value="${cl[d] ? cl[d].counted : ''}" oninput="calcClose()" class="inp"></div></div>
+      <p class="text-xs text-gray-500 mt-2">আজ নগদ ${money(by.Cash)} · বিকাশ ${money(by.bKash)} · নগদ অ্যাপ ${money(by.Nagad)}<br>নগদ থেকে খরচ ${money(CC.ex)} · মাল কিনতে পরিশোধ ${money(CC.pu)}</p><p id="cc-res" class="mt-2 text-sm"></p>
+      <button onclick="saveClose()" class="mt-2 px-3 py-1.5 bg-emerald-600 text-white rounded text-sm font-bold">ক্লোজিং সেভ করুন</button>
+      <div class="mt-3 text-xs text-gray-500">${Object.keys(cl).sort().reverse().slice(0, 5).map(k => `<div>${k}: গোনা ${money(cl[k].counted)} ${cl[k].diff ? `(${cl[k].diff > 0 ? 'বাড়তি' : 'ঘাটতি'} ${money(Math.abs(cl[k].diff))})` : '✔'}</div>`).join('')}</div>`) +
+      card('⏳ মেয়াদ (৩০ দিনের মধ্যে / শেষ)', ex.length ? ex.map(x => `<div class="flex justify-between border-t border-gray-100 dark:border-gray-700 py-1 text-sm"><span>${esc(x.p.name)} <span class="text-gray-400">(স্টক ${x.p.stock})</span></span><b class="${x.days < 0 ? 'text-red-600' : x.days <= 7 ? 'text-amber-600' : ''}">${x.days < 0 ? 'মেয়াদ শেষ' : x.days + ' দিন বাকি'}</b></div>`).join('') : '<p class="text-sm text-gray-400">কোনো পণ্যের মেয়াদ কাছাকাছি নয় (পণ্য এডিট করে মেয়াদ দিন)</p>') +
+      card('📒 বাকির সীমা ও পুরনো বাকি', `<div class="flex gap-2 items-center mb-3"><input id="lim" type="number" min="0" value="${lim || ''}" placeholder="প্রতি কাস্টমারের সীমা (৳), ০ = বন্ধ" class="inp"><button onclick="setLimit()" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-bold">সেভ</button></div>
+      <div class="overflow-x-auto"><table class="w-full text-xs"><tr class="text-left text-gray-500"><th>কাস্টমার</th><th>০–৩০</th><th>৩১–৬০</th><th>৬০+</th><th>পুরনো</th><th>মোট</th></tr>${ag.map(([n, b, t]) => `<tr class="border-t border-gray-100 dark:border-gray-700"><td>${esc(n)}</td>${b.map((v, i) => `<td class="${i >= 2 && v ? 'text-red-600 font-bold' : ''}">${v ? r3(v) : '-'}</td>`).join('')}<td><b>${r3(t)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="text-gray-400 py-2">কোনো বাকি নেই</td></tr>'}</table></div>`) +
+      card('📊 এই মাস বনাম গত মাস', `<table class="w-full text-sm"><tr class="text-left text-gray-500"><th></th><th>এই মাস</th><th>গত মাস</th><th>বদল</th></tr>${[['বিক্রি', 'rev'], ['খরচ', 'ex'], ['নিট লাভ', 'profit']].map(([l, k]) => `<tr class="border-t border-gray-100 dark:border-gray-700"><td>${l}</td><td>${money(cur[k])}</td><td>${money(prev[k])}</td><td>${chg(cur[k], prev[k])}</td></tr>`).join('')}</table>`) +
+      card('🐌 অনেকদিন বিক্রি হচ্ছে না', `<div class="text-sm mb-2">গত <input id="slow-days" type="number" min="1" value="30" oninput="slowList()" class="inp !w-20 !py-0.5"> দিনে বিক্রি হয়নি:</div><div id="slow-out" class="text-sm max-h-48 overflow-y-auto"></div>`) +
+      card('📦 স্টক গণনা ও মাল দরকার', `<div class="flex gap-2 flex-wrap"><button onclick="startCount()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-semibold">স্টক গণনা শুরু</button><button onclick="lowWA()" class="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-semibold">কম স্টকের তালিকা WhatsApp-এ</button></div><div id="count-box" class="mt-3"></div>`);
+    calcClose(); slowList();
+  };
+  const _st = switchTab;
+  switchTab = function (t) { _st(t); if (t === 'tools' && !staff()) { $('page-title').innerText = 'ক্লোজিং ও টুলস'; renderTools(); } if (t === 'pos') $('pos-date-wrap').style.display = staff() ? 'none' : ''; };
+
+  // ---- প্রিন্ট/PDF ও WhatsApp স্টেটমেন্ট ----
+  const ps = document.createElement('style');
+  ps.textContent = '@media print{body.pt .print-target,body.pt .print-target *{visibility:visible!important}body.pt .print-target{position:absolute!important;left:0;top:0;width:100%;max-height:none!important;overflow:visible!important}body.pt .print-target *{max-height:none!important;overflow:visible!important}}';
+  document.head.appendChild(ps);
+  printEl = function (el) { el.classList.add('print-target'); document.body.classList.add('pt'); setTimeout(() => { window.print(); document.body.classList.remove('pt'); el.classList.remove('print-target'); }, 50); };
+  $('report-filter').parentElement.insertAdjacentHTML('beforeend', `<button onclick="printEl(document.getElementById('view-reports'))" class="px-3 py-1 bg-gray-600 text-white text-xs rounded-lg">🖨 প্রিন্ট / PDF</button>`);
+  $('ledger-modal').querySelector('.border-t:last-child').insertAdjacentHTML('afterbegin', `<button onclick="printEl(document.getElementById('ledger-modal').firstElementChild)" class="px-3 py-1.5 bg-gray-600 text-white rounded text-xs font-semibold mr-1">🖨 প্রিন্ট / PDF</button><button onclick="ledgerWA()" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-semibold mr-1">WhatsApp</button>`);
+  ledgerWA = function () {
+    const t = $('ledger-modal-title').innerText; if (!t.startsWith('কাস্টমার')) return showToast('শুধু কাস্টমার লেজারে', 'error');
+    const n = t.split(': ').slice(1).join(': '), c = appState.customers[n] || {}; let ph = (c.phone || '').replace(/\D/g, ''); if (ph.startsWith('0')) ph = '88' + ph;
+    open(`https://wa.me/${ph}?text=` + encodeURIComponent(`${appState.settings.name}\n${n}-এর হিসাব:\nমোট ক্রয়: ${$('ledger-summary-total').innerText}\nজমা: ${$('ledger-summary-paid').innerText}\nবাকি: ${$('ledger-summary-due').innerText}`));
+  };
+
+  // ---- ইনপুট যাচাই + মেয়াদের সতর্কতা ----
+  document.addEventListener('change', e => {
+    const t = e.target; if (t.type !== 'number' || t.value === '') return;
+    if (t.min !== '' && parseFloat(t.value) < parseFloat(t.min)) { t.value = t.min; showToast('সংখ্যা ঠিক করা হয়েছে', 'error'); }
+    else if (Math.abs(+t.value) > 1e9) t.value = '';
+  });
+  setTimeout(() => {
+    if (staff()) return; const d = today();
+    const n = appState.products.filter(p => p.expiry && Math.round((new Date(p.expiry + 'T00:00:00') - new Date(d + 'T00:00:00')) / 864e5) <= 7).length;
+    if (n) showToast(`⏳ ${n}টি পণ্যের মেয়াদ শেষ বা ৭ দিনের মধ্যে (ক্লোজিং ও টুলস দেখুন)`, 'error');
+  }, 2500);
+})();
+
+</script>
+<script>
+/* v6: উন্নত পিন সিস্টেম — একাধিক ইউজার, শক্ত হ্যাশ, লকআউট, অডিট লগ, রিকভারি কোড */
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const J = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+  const S = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+  const te = new TextEncoder();
+  const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+  const rnd = n => hex(crypto.getRandomValues(new Uint8Array(n)));
+  const ROLE = { owner: 'মালিক', manager: 'ম্যানেজার', staff: 'স্টাফ' };
+  const RL = [['t_dashboard', '📈 ড্যাশবোর্ড দেখা'], ['t_pos', '🛒 বিক্রি (POS)'], ['t_memos', '🧾 মেমো তালিকা'], ['t_inventory', '📦 স্টক দেখা'], ['t_due', '📒 বাকি খাতা দেখা'], ['t_expenses', '👛 খরচ খাতা দেখা'], ['t_reports', '📊 হিসাব ও রিপোর্ট'], ['t_suppliers', '🚚 সাপ্লায়ার ও মাল ক্রয়'], ['t_tools', '🧰 ক্লোজিং ও টুলস'], ['profit', '💰 লাভের কার্ড দেখা'], ['buy', '🏷 ক্রয়মূল্য ও স্টক মূল্য দেখা'], ['prod', '✏️ পণ্য যোগ / এডিট'], ['del', '🗑 মোছা ও মেমো বাতিল'], ['ret', '↩ আংশিক ফেরত নেওয়া'], ['due', '💵 বাকি জমা নেওয়া'], ['exp', '➕ নতুন খরচ যোগ'], ['date', '📅 আগের তারিখে বিক্রি']];
+  const DEF = { manager: { t_dashboard: 1, t_pos: 1, t_memos: 1, t_inventory: 1, t_due: 1, t_expenses: 1, t_reports: 1, t_suppliers: 1, t_tools: 1, profit: 1, buy: 1, prod: 1, del: 1, ret: 1, due: 1, exp: 1, date: 1, maxDisc: 100 }, staff: { t_pos: 1, t_memos: 1, t_inventory: 1, t_due: 1, due: 1, maxDisc: 10 } };
+  const RANK = { staff: 1, manager: 2, owner: 3 };
+  const okPin = p => /^\d{4,6}$/.test(p || '');
+  async function kdf(pin, salt) {
+    if (window.crypto && crypto.subtle) { const k = await crypto.subtle.importKey('raw', te.encode(pin), 'PBKDF2', false, ['deriveBits']); return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: te.encode(salt), iterations: 100000, hash: 'SHA-256' }, k, 256)); }
+    let h = 5381; for (const c of salt + pin) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return 'x' + h;
+  }
+  async function legacy(pin) { if (window.crypto && crypto.subtle) return hex(await crypto.subtle.digest('SHA-256', te.encode('dm|' + pin))); let h = 5381; for (const c of pin) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return 'x' + h; }
+
+  // ডেটা (পুরনো v4 পিন থেকে অটো মাইগ্রেশন)
+  let DB = J('dm_users', null);
+  if (!DB) {
+    const lp = J('dm_pin', {}); DB = { users: [], rec: null };
+    if (lp.owner) DB.users.push({ id: rnd(4), name: 'মালিক', role: 'owner', legacy: true, hash: lp.owner });
+    if (lp.staff) DB.users.push({ id: rnd(4), name: 'স্টাফ', role: 'staff', legacy: true, hash: lp.staff });
+    S('dm_users', DB);
+  }
+  const save = () => S('dm_users', DB), hasLock = () => DB.users.length > 0;
+  DB.rules = DB.rules || JSON.parse(JSON.stringify(DEF)); ['manager', 'staff'].forEach(r => DB.rules[r] = DB.rules[r] || JSON.parse(JSON.stringify(DEF[r])));
+  const can = k => { const r = dmRole(); return r === 'owner' || !!(DB.rules[r] || {})[k]; };
+  const maxDisc = r => { const v = (DB.rules[r] || {}).maxDisc; return v === undefined ? (r === 'staff' ? 10 : 100) : v; };
+  let cur = null, sel = null, idleT;
+  window.dmRole = () => cur ? cur.role : (hasLock() ? 'staff' : 'owner');
+  const log = a => { const L = J('dm_audit', []); L.unshift({ t: new Date().toISOString(), u: cur ? cur.name : '-', a }); S('dm_audit', L.slice(0, 300)); };
+  async function verify(u, pin) {
+    if (u.legacy) { if (await legacy(pin) !== u.hash) return false; u.salt = rnd(16); u.hash = await kdf(pin, u.salt); delete u.legacy; save(); return true; }
+    return await kdf(pin, u.salt) === u.hash;
+  }
+  async function newRecovery() { const code = [rnd(2), rnd(2), rnd(2)].join('-').toUpperCase(), salt = rnd(8); DB.rec = { salt, hash: await kdf(code, salt) }; save(); return code; }
+
+  // লগইন পর্দা
+  document.body.insertAdjacentHTML('beforeend', `<div id="lock" class="hidden fixed inset-0 z-[100] bg-emerald-700 flex items-center justify-center p-4"><div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-xs text-center space-y-3"><div class="text-4xl">🔒</div><h2 class="font-bold text-lg">কে ঢুকছেন?</h2><div id="lk-users" class="flex flex-wrap gap-2 justify-center"></div><input id="lock-pin" type="password" inputmode="numeric" maxlength="6" placeholder="পিন" class="w-full text-center tracking-widest text-xl px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700"><p id="lock-msg" class="text-xs text-red-500 min-h-[1rem]"></p><button id="lock-btn" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg">খুলুন</button><button id="lk-forgot" class="text-xs text-gray-500 underline">পিন ভুলে গেছেন?</button></div></div>`);
+  const msg = t => $('lock-msg').textContent = t;
+  function showUsers() {
+    $('lk-users').innerHTML = DB.users.map(u => `<button data-id="${u.id}" class="px-3 py-1.5 rounded-lg border text-sm ${sel === u.id ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-300 dark:border-gray-600'}">${esc(u.name)}</button>`).join('');
+    $('lk-users').querySelectorAll('button').forEach(b => b.onclick = () => { sel = b.dataset.id; showUsers(); $('lock-pin').focus(); });
+  }
+  window.lockApp = function () {
+    if (!hasLock()) return; if (cur) log('লক/লগআউট'); cur = null; sel = DB.users.length === 1 ? DB.users[0].id : null;
+    showUsers(); $('lock-pin').value = ''; msg(''); $('lock').classList.remove('hidden'); badge(); setTimeout(() => $('lock-pin').focus(), 50);
+  };
+  async function login() {
+    const l = J('dm_lock', {}); if (l.until > Date.now()) return msg(`অনেকবার ভুল। ${Math.ceil((l.until - Date.now()) / 1000)} সেকেন্ড পরে চেষ্টা করুন`);
+    const u = DB.users.find(x => x.id === sel); if (!u) return msg('নাম বেছে নিন');
+    if (await verify(u, $('lock-pin').value)) { S('dm_lock', {}); cur = u; $('lock').classList.add('hidden'); log('লগইন'); applyRole(); resetIdle(); }
+    else { const f = (l.fails || 0) + 1; S('dm_lock', { fails: f, until: f >= 5 ? Date.now() + Math.min(30000 * 2 ** (f - 5), 900000) : 0 }); log(`ভুল পিন চেষ্টা (${u.name})`); msg(f >= 5 ? 'অনেকবার ভুল। কিছুক্ষণ অপেক্ষা করুন' : `ভুল পিন (আর ${5 - f} বার সুযোগ)`); }
+  }
+  $('lock-btn').onclick = login; $('lock-pin').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  $('lk-forgot').onclick = async () => {
+    const l = J('dm_lock', {}); if (l.until > Date.now()) return msg('কিছুক্ষণ পরে চেষ্টা করুন');
+    if (!DB.rec) return msg('রিকভারি কোড সেট করা নেই');
+    const c = (prompt('রিকভারি কোড লিখুন') || '').trim().toUpperCase(); if (!c) return;
+    if (await kdf(c, DB.rec.salt) !== DB.rec.hash) { const f = (l.fails || 0) + 1; S('dm_lock', { fails: f, until: f >= 5 ? Date.now() + 60000 : 0 }); return msg('ভুল কোড'); }
+    const np = prompt('মালিকের নতুন পিন (৪–৬ সংখ্যা)'); if (!okPin(np)) return msg('পিন ঠিক নয়');
+    const o = DB.users.find(u => u.role === 'owner'); o.salt = rnd(16); o.hash = await kdf(np, o.salt); delete o.legacy;
+    const code = await newRecovery(); S('dm_lock', {}); cur = null; log('রিকভারি কোডে মালিকের পিন রিসেট'); alert('নতুন রিকভারি কোড (লিখে রাখুন): ' + code); msg('নতুন পিনে ঢুকুন');
+  };
+
+  // ভূমিকা অনুযায়ী অনুমতি
+  const allowed = t => dmRole() === 'owner' || (t !== 'settings' && can('t_' + t));
+  const css = document.createElement('style');
+  css.textContent = `body.np-buy #view-inventory table th:nth-child(4),body.np-buy #view-inventory table td:nth-child(4),body.np-buy #view-inventory>.grid,body.np-prod #view-inventory table th:last-child,body.np-prod #view-inventory table td:last-child,body.np-prod #view-inventory button[onclick="openProductModal()"],body.np-del #memo-view-modal button[onclick="cancelSale()"],body.np-del #view-inventory button[onclick^="deleteProduct"],body.np-del #expense-table-body button[onclick^="deleteExpense"],body.np-ret #memo-view-modal button[onclick="partialReturn()"],body.np-due #due-table-body button[onclick^="openDueModal"],body.np-exp #view-expenses .grid>div:first-child,body.np-date #pos-date-wrap,body.np-profit .bg-white:has(#dash-today-profit),body.np-profit .bg-white:has(#dash-cash-net){display:none!important}`;
+  document.head.appendChild(css);
+  function badge() {
+    if (!$('user-badge')) $('theme-icon').closest('button').insertAdjacentHTML('beforebegin', '<button id="user-badge" onclick="myAcct()" class="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-xs font-semibold"></button><button id="lock-now" onclick="lockApp()" title="লক করুন" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700">🔒</button>');
+    const on = hasLock() && cur; $('user-badge').textContent = cur ? `👤 ${cur.name} (${ROLE[cur.role]})` : ''; $('user-badge').style.display = $('lock-now').style.display = on ? '' : 'none';
+  }
+  function applyRole() {
+    const r = dmRole(); document.body.classList.remove('role-owner', 'role-manager', 'role-staff'); document.body.classList.add('role-' + r);
+    Object.entries({ buy: 'np-buy', prod: 'np-prod', del: 'np-del', ret: 'np-ret', due: 'np-due', exp: 'np-exp', date: 'np-date', profit: 'np-profit' }).forEach(([k, c]) => document.body.classList.toggle(c, !can(k)));
+    document.querySelectorAll('.nav-btn,#bnav button').forEach(b => { const m = (b.getAttribute('onclick') || '').match(/switchTab\('(\w+)'\)/); b.style.display = m && !allowed(m[1]) ? 'none' : ''; });
+    badge(); switchTab(r === 'staff' ? 'pos' : 'dashboard');
+  }
+  const _st = switchTab;
+  switchTab = function (t) {
+    if (!allowed(t)) t = 'pos'; _st(t);
+    document.querySelectorAll('#bnav button').forEach(b => b.classList.toggle('text-emerald-600', (b.getAttribute('onclick') || '').includes(`'${t}'`)));
+    if (t === 'settings') renderUsers();
+  };
+  function resetIdle() { clearTimeout(idleT); const m = +localStorage.getItem('dm_autolock') || 0; if (hasLock() && cur && m) idleT = setTimeout(lockApp, m * 60000); }
+  ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, resetIdle, { passive: true }));
+  if (localStorage.getItem('dm_autolock') === null) localStorage.setItem('dm_autolock', '10');
+
+  // গুরুত্বপূর্ণ কাজে পিন পুনরায় যাচাই
+  function askPin(why) {
+    return new Promise(res => {
+      if (!hasLock() || !cur) return res(true);
+      const ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4';
+      ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl p-5 w-full max-w-xs space-y-3 text-center"><h3 class="font-bold">${esc(why)}</h3><p class="text-xs text-gray-500">নিশ্চিত করতে আপনার পিন দিন</p><input id="ap-pin" type="password" inputmode="numeric" maxlength="6" class="w-full text-center tracking-widest text-xl px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700"><p id="ap-msg" class="text-xs text-red-500 min-h-[1rem]"></p><div class="flex gap-2"><button id="ap-no" class="flex-1 py-2 bg-gray-300 dark:bg-gray-600 rounded-lg text-sm">বাতিল</button><button id="ap-ok" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">নিশ্চিত</button></div></div>`;
+      document.body.appendChild(ov); let n = 0; const done = v => { ov.remove(); res(v); };
+      $('ap-no').onclick = () => done(false);
+      const go = async () => { if (await verify(cur, $('ap-pin').value)) done(true); else { n++; log(`পুনঃযাচাইয়ে ভুল পিন (${why})`); if (n >= 3) { done(false); lockApp(); } else $('ap-msg').textContent = 'ভুল পিন'; } };
+      $('ap-ok').onclick = go; $('ap-pin').addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); $('ap-pin').focus();
+    });
+  }
+  const size = () => appState.sales.length + appState.products.length + appState.expenses.length;
+  function approve(why, key) {
+    return new Promise(res => {
+      const deny = () => { showToast('এই কাজের অনুমতি নেই', 'error'); res(false); };
+      if (!hasLock() || localStorage.getItem('dm_override') === '0') return deny();
+      const el = DB.users.filter(u => RANK[u.role] > RANK[dmRole()] && (u.role === 'owner' || key === 'disc' || (DB.rules[u.role] || {})[key]));
+      if (!el.length) return deny();
+      log(`অনুমতি ছাড়া চেষ্টা: ${why}`);
+      const ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[95] flex items-center justify-center p-4';
+      ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl p-5 w-full max-w-xs space-y-3 text-center"><h3 class="font-bold">🔐 অনুমোদন দরকার</h3><p class="text-sm">${esc(why)}</p><p class="text-xs text-gray-500">ম্যানেজার বা মালিকের পিন দিন</p><input id="av-pin" type="password" inputmode="numeric" maxlength="6" class="w-full text-center tracking-widest text-xl px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700"><p id="av-msg" class="text-xs text-red-500 min-h-[1rem]"></p><div class="flex gap-2"><button id="av-no" class="flex-1 py-2 bg-gray-300 dark:bg-gray-600 rounded-lg text-sm">বাতিল</button><button id="av-ok" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">অনুমোদন</button></div></div>`;
+      document.body.appendChild(ov); let n = 0; const done = v => { ov.remove(); res(v); };
+      $('av-no').onclick = () => done(false);
+      const go = async () => {
+        for (const u of el) if (await verify(u, $('av-pin').value)) { log(`অনুমোদন দিয়েছেন ${u.name}: ${why}`); return done(true); }
+        n++; log(`অনুমোদনে ভুল পিন: ${why}`); if (n >= 3) done(false); else $('av-msg').textContent = 'ভুল পিন';
+      };
+      $('av-ok').onclick = go; $('av-pin').addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); $('av-pin').focus();
+    });
+  }
+  function guard(fn, why, key, opt = {}) {
+    const o = window[fn];
+    window[fn] = function () {
+      const a = arguments; if (a[0] && a[0].type === 'submit') a[0].preventDefault();
+      (can(key) ? (opt.re ? askPin(why) : Promise.resolve(true)) : approve(why, key)).then(ok => {
+        if (!ok) return; const nm = opt.nameOf ? opt.nameOf(...a) : '', b = size(); o.apply(null, a);
+        if (opt.log && (!opt.chg || size() !== b)) log(`${why}${nm ? ': ' + nm : ''}`);
+      });
+    };
+  }
+  guard('cancelSale', 'মেমো বাতিল', 'del', { re: 1, log: 1, chg: 1, nameOf: () => (($('modal-memo-content').innerText || '').match(/(INV|RET)-\d+/) || [''])[0] });
+  guard('deleteProduct', 'পণ্য মোছা', 'del', { re: 1, log: 1, chg: 1, nameOf: id => (appState.products.find(p => p.id === id) || {}).name });
+  guard('deleteExpense', 'খরচ মোছা', 'del', { re: 1, log: 1, chg: 1, nameOf: id => { const e = appState.expenses.find(x => x.id === id); return e ? `${e.title} ৳${e.amount}` : ''; } });
+  guard('importData', 'ডেটা রিস্টোর', 'import', { re: 1, log: 1 });
+  guard('partialReturn', 'আংশিক ফেরত', 'ret');
+  guard('openProductModal', 'পণ্য যোগ / এডিট', 'prod');
+  guard('openDueModal', 'বাকি জমা নেওয়া', 'due');
+  guard('addExpense', 'নতুন খরচ যোগ', 'exp');
+  ['saveSettings', 'saveCloud', 'exportData'].forEach(fn => { const o = window[fn]; window[fn] = function () { log({ saveSettings: 'দোকানের সেটিংস বদল', saveCloud: 'ক্লাউড সেটিংস বদল', exportData: 'ডেটা ব্যাকআপ নেওয়া' }[fn]); return o.apply(this, arguments); }; });
+  const _sp = saveProduct;
+  saveProduct = function (e) {
+    const id = $('prod-id').value, b = id ? appState.products.find(p => String(p.id) === id) : null, bs = b && b.sellPrice, bb = b && b.buyPrice, nm = b && b.name;
+    _sp(e); if (b && (b.sellPrice !== bs || b.buyPrice !== bb)) log(`দাম বদল: ${nm} বিক্রি ${bs}→${b.sellPrice}, ক্রয় ${bb}→${b.buyPrice}`);
+  };
+  const seenRet = new Set(appState.sales.filter(s => s.isReturn).map(s => s.id)), _ss = saveState;
+  saveState = function () { _ss(); appState.sales.filter(s => s.isReturn && !seenRet.has(s.id)).forEach(s => { seenRet.add(s.id); log(`আংশিক ফেরত ${s.id} ৳${Math.abs(s.grandTotal)}`); }); };
+
+  // ডিসকাউন্ট/দাম কমানোর সীমা (পদ অনুযায়ী) — বেশি হলে উঁচু পদের অনুমোদন লাগে
+  const _pc = processCheckout;
+  processCheckout = function () {
+    if (!can('date')) $('pos-date').value = '';
+    const r = dmRole();
+    if (r !== 'owner' && appState.cart.length) {
+      const pct = maxDisc(r), sub = appState.cart.reduce((s, i) => s + i.sellPrice * i.qty, 0), d = parseFloat($('pos-discount').value) || 0;
+      const bad = d > sub * pct / 100 + 0.001 ? 'ডিসকাউন্ট সীমা ছাড়িয়েছে' : (appState.cart.find(i => { const p = appState.products.find(x => x.id === i.id); return p && i.sellPrice < Math.min(p.sellPrice, p.wholesale > 0 ? p.wholesale : p.sellPrice) * (1 - pct / 100) - 0.001; }) ? 'দাম অনেক কম বসানো হয়েছে' : '');
+      if (bad) { approve(`${bad} (${pct}%-এর বেশি)`, 'disc').then(ok => { if (ok) _pc(); }); return; }
+    }
+    return _pc();
+  };
+
+  // আমার অ্যাকাউন্ট: পিন বদল / লগআউট
+  myAcct = function () {
+    const ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl p-5 w-full max-w-xs space-y-2"><h3 class="font-bold">${esc(cur.name)} (${ROLE[cur.role]})</h3><input id="ac-old" type="password" inputmode="numeric" maxlength="6" placeholder="বর্তমান পিন" class="inp"><input id="ac-new" type="password" inputmode="numeric" maxlength="6" placeholder="নতুন পিন (৪–৬ সংখ্যা)" class="inp"><div class="flex gap-2 pt-1"><button id="ac-x" class="flex-1 py-2 bg-gray-300 dark:bg-gray-600 rounded-lg text-sm">বন্ধ</button><button id="ac-s" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">পিন বদলান</button></div><button id="ac-out" class="w-full py-2 bg-red-50 text-red-600 rounded-lg text-sm font-semibold">লগআউট</button></div>`;
+    document.body.appendChild(ov); $('ac-x').onclick = () => ov.remove(); $('ac-out').onclick = () => { ov.remove(); lockApp(); };
+    $('ac-s').onclick = async () => {
+      if (!await verify(cur, $('ac-old').value)) return showToast('বর্তমান পিন ভুল', 'error');
+      if (!okPin($('ac-new').value)) return showToast('নতুন পিন ৪–৬ সংখ্যার হতে হবে', 'error');
+      cur.salt = rnd(16); cur.hash = await kdf($('ac-new').value, cur.salt); save(); log('নিজের পিন বদল'); ov.remove(); showToast('পিন বদলানো হয়েছে');
+    };
+  };
+
+  // সেটিংসে ইউজার ব্যবস্থাপনা
+  const box = 'bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-3';
+  $('view-settings').firstElementChild.insertAdjacentHTML('beforeend', `<div class="${box}"><h3 class="font-bold text-lg border-b pb-2">🔒 ইউজার ও পিন লক</h3><div id="users-body"></div></div>`);
+  $('view-settings').firstElementChild.insertAdjacentHTML('beforeend', `<div id="rules-card" class="${box} md:col-span-2"><h3 class="font-bold text-lg border-b pb-2">⚙️ নিয়ম ও অনুমতি</h3><div id="rules-body"></div></div>`);
+  function renderRules() {
+    const c = $('rules-body'), show = hasLock() && dmRole() === 'owner'; $('rules-card').style.display = show ? '' : 'none'; if (!show) return;
+    c.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><tr class="text-left text-gray-500"><th>কাজ / অনুমতি</th><th class="text-center">ম্যানেজার</th><th class="text-center">স্টাফ</th></tr>${RL.map(([k, l]) => `<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-1.5">${l}</td>${['manager', 'staff'].map(r => `<td class="text-center"><input type="checkbox" data-r="${r}" data-k="${k}" ${(DB.rules[r] || {})[k] ? 'checked' : ''}></td>`).join('')}</tr>`).join('')}<tr class="border-t border-gray-100 dark:border-gray-700"><td class="py-1.5">🏷 সর্বোচ্চ ডিসকাউন্ট / দাম কমানো (%)</td>${['manager', 'staff'].map(r => `<td class="text-center"><input type="number" min="0" max="100" data-r="${r}" data-k="maxDisc" value="${maxDisc(r)}" class="inp !w-16 text-center"></td>`).join('')}</tr></table></div>
+      <label class="flex items-start gap-2 text-xs pt-2"><input type="checkbox" id="rl-ov" ${localStorage.getItem('dm_override') === '0' ? '' : 'checked'}> অনুমতি না থাকলে উঁচু পদের কেউ নিজের পিন দিয়ে একবারের জন্য অনুমোদন দিতে পারবে (বন্ধ করলে অনুমতি ছাড়া কাজ একেবারেই আটকে যাবে)</label>
+      <p class="text-[11px] text-gray-400 pt-1">মালিকের সব অনুমতি সবসময় থাকে। সেটিংস শুধু মালিকের। বদল সাথে সাথে কার্যকর হয় আর কাজের লগে লেখা থাকে।</p>`;
+    c.querySelectorAll('input[data-k]').forEach(i => i.onchange = () => {
+      const r = i.dataset.r, k = i.dataset.k; DB.rules[r] = DB.rules[r] || {}; DB.rules[r][k] = i.type === 'checkbox' ? (i.checked ? 1 : 0) : Math.max(0, Math.min(100, +i.value || 0)); save(); log(`নিয়ম বদল: ${ROLE[r]} · ${k} = ${DB.rules[r][k]}`);
+    });
+    $('rl-ov').onchange = () => { localStorage.setItem('dm_override', $('rl-ov').checked ? '1' : '0'); log('অনুমোদন-সুবিধা ' + ($('rl-ov').checked ? 'চালু' : 'বন্ধ')); };
+  }
+  function renderUsers() {
+    const c = $('users-body'); if (!c) return; renderRules();
+    if (!hasLock()) { c.innerHTML = `<p class="text-xs text-gray-500 mb-2">পিন লক বন্ধ আছে। মালিকের নাম ও পিন দিয়ে চালু করুন:</p><input id="nu-name" class="inp mb-2" placeholder="নাম (যেমন: মালিক)"><input id="nu-pin" type="password" inputmode="numeric" maxlength="6" class="inp mb-2" placeholder="পিন (৪–৬ সংখ্যা)"><button onclick="enableLock()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-bold">পিন লক চালু করুন</button>`; return; }
+    if (dmRole() !== 'owner') { c.innerHTML = '<p class="text-xs text-gray-500">শুধু মালিক ইউজার বদলাতে পারে।</p>'; return; }
+    const al = localStorage.getItem('dm_autolock'), md = localStorage.getItem('dm_maxdisc');
+    c.innerHTML = DB.users.map(u => `<div class="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-gray-700 text-sm"><span><b>${esc(u.name)}</b> <span class="text-xs text-gray-500">(${ROLE[u.role]})</span></span><span class="flex gap-1"><button data-id="${u.id}" data-a="pin" class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">পিন বদল</button><button data-id="${u.id}" data-a="del" class="px-2 py-0.5 bg-red-50 text-red-600 rounded text-xs">মুছুন</button></span></div>`).join('') +
+      `<div class="grid grid-cols-3 gap-2 pt-3"><input id="nu-name" class="inp" placeholder="নাম"><select id="nu-role" class="inp"><option value="staff">স্টাফ</option><option value="manager">ম্যানেজার</option><option value="owner">মালিক</option></select><input id="nu-pin" type="password" inputmode="numeric" maxlength="6" class="inp" placeholder="পিন"></div><button onclick="addUser()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-bold">নতুন ইউজার যোগ</button>
+      <div class="grid grid-cols-2 gap-2 pt-3 text-xs"><label>অটো লক (মিনিট)<select id="st-al" class="inp">${[1, 5, 10, 30, 0].map(m => `<option value="${m}" ${String(m) === al ? 'selected' : ''}>${m || 'বন্ধ'}</option>`).join('')}</select></label></div>
+      <div class="flex flex-wrap gap-2 pt-2"><button onclick="showAudit()" class="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-xs font-semibold">📋 কাজের লগ</button><button onclick="makeRecovery()" class="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold">🔑 রিকভারি কোড ${DB.rec ? 'নতুন করুন' : 'বানান'}</button><button onclick="disableLock()" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-semibold">পিন লক বন্ধ</button></div>
+      <p class="text-[11px] text-gray-400">ম্যানেজার সেটিংস ছাড়া সব দেখতে পারে। স্টাফ ক্রয়মূল্য, লাভ, খরচ, রিপোর্ট ও মোছা/বাতিলের কাজ পারে না। মেমো বাতিল, মোছা ও রিস্টোরে নিজের পিন আবার দিতে হয়। এটা সাধারণ ব্যবহারের সুরক্ষা; ব্রাউজারের টুল জানা কেউ এই কম্পিউটারের ডেটা দেখতে পারে।</p>`;
+    c.querySelectorAll('button[data-a]').forEach(b => b.onclick = () => userAct(b.dataset.id, b.dataset.a));
+    $('st-al').onchange = () => { localStorage.setItem('dm_autolock', $('st-al').value); resetIdle(); };
+  }
+  enableLock = async function () {
+    const n = $('nu-name').value.trim() || 'মালিক', p = $('nu-pin').value.trim(); if (!okPin(p)) return showToast('পিন ৪–৬ সংখ্যার হতে হবে', 'error');
+    const salt = rnd(16); const u = { id: rnd(4), name: n, role: 'owner', salt, hash: await kdf(p, salt) }; DB.users = [u]; const code = await newRecovery(); save(); cur = u; log('পিন লক চালু'); applyRole(); switchTab('settings');
+    alert('আপনার রিকভারি কোড: ' + code + '\n\nকাগজে লিখে নিরাপদ জায়গায় রাখুন। পিন ভুলে গেলে এটাই একমাত্র উপায়, আর এটা আর দেখানো হবে না।');
+  };
+  addUser = async function () {
+    const n = $('nu-name').value.trim(), r = $('nu-role').value, p = $('nu-pin').value.trim();
+    if (!n || DB.users.some(u => u.name === n)) return showToast('নাম ফাঁকা বা আগে থেকেই আছে', 'error'); if (!okPin(p)) return showToast('পিন ৪–৬ সংখ্যার হতে হবে', 'error');
+    const salt = rnd(16); DB.users.push({ id: rnd(4), name: n, role: r, salt, hash: await kdf(p, salt) }); save(); log(`ইউজার যোগ: ${n} (${ROLE[r]})`); renderUsers(); showToast('ইউজার যোগ হয়েছে');
+  };
+  async function userAct(id, a) {
+    const u = DB.users.find(x => x.id === id); if (!u) return;
+    if (a === 'del') {
+      if (u.role === 'owner' && DB.users.filter(x => x.role === 'owner').length < 2) return showToast('শেষ মালিককে মোছা যাবে না', 'error');
+      if (!await askPin(`ইউজার মোছা: ${u.name}`)) return; DB.users = DB.users.filter(x => x.id !== id); save(); log(`ইউজার মোছা: ${u.name}`);
+    } else {
+      const np = prompt(`${u.name}-এর নতুন পিন (৪–৬ সংখ্যা)`); if (!okPin(np)) return; u.salt = rnd(16); u.hash = await kdf(np, u.salt); delete u.legacy; save(); log(`পিন রিসেট: ${u.name}`);
+    }
+    renderUsers();
+  }
+  makeRecovery = async function () { if (!await askPin('রিকভারি কোড বানানো')) return; const c = await newRecovery(); log('নতুন রিকভারি কোড'); renderUsers(); alert('নতুন রিকভারি কোড: ' + c + '\n\nকাগজে লিখে রাখুন। আগের কোড আর কাজ করবে না।'); };
+  disableLock = async function () { if (!await askPin('পিন লক বন্ধ')) return; log('পিন লক বন্ধ'); DB = { users: [], rec: null }; save(); cur = null; applyRole(); renderUsers(); };
+  showAudit = function () {
+    const L = J('dm_audit', []).slice(0, 100), ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg max-h-[80vh] flex flex-col"><div class="p-3 border-b font-bold flex justify-between"><span>📋 কাজের লগ (শেষ ${L.length}টি)</span><button id="au-x">✖</button></div><div class="p-3 overflow-y-auto text-xs space-y-1">${L.map(x => `<div class="border-b border-gray-100 dark:border-gray-700 pb-1"><span class="text-gray-400">${new Date(x.t).toLocaleString('bn-BD')}</span> · <b>${esc(x.u)}</b> — ${esc(x.a)}</div>`).join('') || 'কিছু নেই'}</div><div class="p-3 border-t"><button id="au-csv" class="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-xs">CSV ডাউনলোড</button></div></div>`;
+    document.body.appendChild(ov); $('au-x').onclick = () => ov.remove();
+    $('au-csv').onclick = () => { const q = v => `"${String(v).replace(/"/g, '""')}"`, a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + 'সময়,ইউজার,কাজ\n' + J('dm_audit', []).map(x => [x.t, x.u, x.a].map(q).join(',')).join('\n')], { type: 'text/csv' })); a.download = 'audit_log.csv'; a.click(); };
+  };
+
+  // শুরু
+  if (hasLock()) lockApp(); else applyRole();
 })();
 
 </script>
