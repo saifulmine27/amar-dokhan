@@ -2361,5 +2361,745 @@
             }
         }
     </script>
+<script>
+/* দোকান ম্যানেজার - আপগ্রেড প্যাচ (মূল HTML-এর শেষে যুক্ত করুন) */
+(function () {
+  const $ = id => document.getElementById(id);
+  const p2 = n => String(n).padStart(2, '0');
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // 1. বাংলাদেশ/লোকাল টাইম অনুযায়ী তারিখ (UTC ভুল ঠিক)
+  Date.prototype.toISOString = function () {
+    return `${this.getFullYear()}-${p2(this.getMonth() + 1)}-${p2(this.getDate())}T${p2(this.getHours())}:${p2(this.getMinutes())}:${p2(this.getSeconds())}.${String(this.getMilliseconds()).padStart(3, '0')}`;
+  };
+
+  // 2. নতুন ডেটা + সেভ
+  appState.suppliers = JSON.parse(localStorage.getItem('dm_suppliers')) || {};
+  appState.purchases = JSON.parse(localStorage.getItem('dm_purchases')) || [];
+  const _save = saveState;
+  saveState = function () {
+    _save();
+    localStorage.setItem('dm_suppliers', JSON.stringify(appState.suppliers));
+    localStorage.setItem('dm_purchases', JSON.stringify(appState.purchases));
+  };
+
+  // 3. স্টাইল: প্রিন্ট ফিক্স + ইনপুট
+  const st = document.createElement('style');
+  st.textContent = `#printable-receipt{display:none}@media print{#printable-receipt{display:block!important}}
+  .inp{width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:.5rem;font-size:.875rem;background:#f9fafb}
+  .dark .inp{background:#374151;border-color:#4b5563;color:#fff}`;
+  document.head.appendChild(st);
+  $('printable-receipt').classList.remove('hidden');
+
+  // 4. XSS রোধ: < > " ইনপুটে ঢুকতে দেবে না
+  document.addEventListener('input', e => {
+    const t = e.target;
+    if (t.type === 'text' && /[<>"]/.test(t.value)) t.value = t.value.replace(/[<>"]/g, '');
+  });
+
+  // 5. দশমিক পরিমাণ (০.৫ কেজি ইত্যাদি)
+  ['prod-stock', 'prod-alert'].forEach(i => $(i).step = 'any');
+  saveProduct = function (e) {
+    e.preventDefault();
+    const id = $('prod-id').value, f = k => $(k).value;
+    const d = {
+      name: f('prod-name').trim(), category: f('prod-category').trim(), unit: f('prod-unit'),
+      buyPrice: parseFloat(f('prod-buy-price')) || 0, sellPrice: parseFloat(f('prod-sell-price')) || 0,
+      stock: parseFloat(f('prod-stock')) || 0, alertLevel: parseFloat(f('prod-alert')) || 5
+    };
+    if (id) { const x = appState.products.find(p => p.id === parseInt(id)); if (x) Object.assign(x, d); }
+    else appState.products.unshift({ id: Date.now(), ...d });
+    saveState(); closeProductModal(); renderInventory(); renderPOSProducts(); renderPOSCategoryButtons();
+    showToast('পণ্য সফলভাবে সংরক্ষণ করা হয়েছে');
+  };
+
+  renderCart = function () {
+    const c = $('pos-cart-items');
+    if (!appState.cart.length) {
+      c.innerHTML = '<p class="text-xs text-gray-400 py-6 text-center">কার্ট খালি রয়েছে। প্রোডাক্ট যোগ করুন।</p>';
+      updateCartTotals(); return;
+    }
+    c.innerHTML = appState.cart.map(i => `
+      <div class="py-2.5 space-y-1.5 border-b border-gray-100 dark:border-gray-700">
+        <div class="flex justify-between"><span class="font-bold text-xs">${esc(i.name)} (${esc(i.unit)})</span>
+          <button onclick="updateCartQty(${i.id},-${i.qty})" class="text-red-500 text-xs"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="flex justify-between items-center text-xs">
+          <span>দর ৳<input type="number" min="0" step="any" value="${i.sellPrice}" oninput="updateCartItemPrice(${i.id},this.value)" class="w-16 mx-1 px-1 py-0.5 bg-gray-50 dark:bg-gray-700 border rounded"></span>
+          <span>পরিমাণ <input type="number" min="0" step="any" value="${i.qty}" onchange="setCartQty(${i.id},this.value)" class="w-16 px-1 py-0.5 bg-gray-50 dark:bg-gray-700 border rounded font-bold"></span>
+          <b class="text-emerald-600">৳ ${r3(i.sellPrice * i.qty).toLocaleString()}</b></div></div>`).join('');
+    updateCartTotals();
+  };
+  setCartQty = function (id, v) {
+    const i = appState.cart.find(c => c.id === id), p = appState.products.find(x => x.id === id), q = parseFloat(v);
+    if (!i || !p) return;
+    if (!(q > 0)) appState.cart = appState.cart.filter(c => c.id !== id);
+    else if (q > p.stock) showToast('স্টকের চেয়ে বেশি দেওয়া যাবে না!', 'error');
+    else i.qty = q;
+    renderCart();
+  };
+  updateCartQty = function (id, d) { const i = appState.cart.find(c => c.id === id); if (i) setCartQty(id, r3(i.qty + d)); };
+
+  // 6. আংশিক পেমেন্ট
+  $('pos-grand-total').parentElement.insertAdjacentHTML('afterend',
+    '<div class="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400"><span>পরিশোধিত (খালি = পূর্ণ)</span><input id="pos-paid" type="number" min="0" step="any" class="w-24 px-2 py-1 text-right bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm"></div>');
+
+  processCheckout = function () {
+    if (!appState.cart.length) return showToast('কার্টে কোনো পণ্য নেই!', 'error');
+    const name = $('pos-customer-name').value.trim(), phone = $('pos-customer-phone').value.trim(), cn = name || 'সাধারণ কাস্টমার';
+    const discount = parseFloat($('pos-discount').value) || 0;
+    const subtotal = r3(appState.cart.reduce((s, i) => s + i.sellPrice * i.qty, 0));
+    const gt = Math.max(0, r3(subtotal - discount));
+    const m = appState.selectedPaymentMethod, pv = $('pos-paid').value;
+    let paid = m === 'Due' ? (parseFloat(pv) || 0) : (pv === '' ? gt : parseFloat(pv) || 0);
+    paid = Math.min(paid, gt);
+    const due = r3(gt - paid);
+    if (due > 0 && !name) return showToast('বাকির জন্য কাস্টমারের নাম দিন!', 'error');
+
+    appState.cart.forEach(ci => { const p = appState.products.find(x => x.id === ci.id); if (p) p.stock = Math.max(0, r3(p.stock - ci.qty)); });
+    if (name) { const c = appState.customers[name]; if (!c) appState.customers[name] = { phone, initialDue: 0 }; else if (phone) c.phone = phone; }
+
+    const id = 'INV-' + Date.now().toString().slice(-6);
+    const sale = { id, date: new Date().toISOString(), customerName: cn, customerPhone: phone,
+      items: JSON.parse(JSON.stringify(appState.cart)), subtotal, discount, grandTotal: gt,
+      paymentMethod: due > 0 ? 'Due' : (m === 'Due' ? 'Cash' : m) };
+    if (due > 0) {
+      const d = appState.dues[cn] || (appState.dues[cn] = { phone, amount: 0 });
+      d.amount += gt; if (phone) d.phone = phone;
+      if (paid > 0) {
+        d.amount -= paid;
+        appState.payments.push({ id: 'PAY-' + Date.now().toString().slice(-6), date: sale.date, customerName: cn, amount: paid, saleId: id });
+      }
+    }
+    appState.sales.unshift(sale); saveState();
+    appState.cart = [];
+    ['pos-customer-name', 'pos-customer-phone', 'pos-paid'].forEach(k => $(k).value = '');
+    $('pos-discount').value = 0;
+    renderCart(); renderPOSProducts(); showToast('বিক্রি সফলভাবে সম্পন্ন হয়েছে');
+  };
+
+  // 7. মেমো বাতিল (স্টক ও বাকি ফেরত)
+  let curMemo = null;
+  const _vm = viewMemo; viewMemo = function (s) { curMemo = s.id; _vm(s); };
+  $('memo-view-modal').querySelector('.border-t').insertAdjacentHTML('afterbegin',
+    '<button onclick="cancelSale()" class="px-3 py-1.5 bg-red-600 text-white rounded text-xs font-semibold mr-auto">মেমো বাতিল</button>');
+  cancelSale = function () {
+    const s = appState.sales.find(x => x.id === curMemo);
+    if (!s || !confirm('এই মেমো বাতিল করে স্টক ফেরত দেবেন?')) return;
+    s.items.forEach(i => { const p = appState.products.find(x => x.id === i.id); if (p) p.stock = r3(p.stock + i.qty); });
+    if (s.paymentMethod === 'Due') {
+      const paid = appState.payments.filter(x => x.saleId === s.id).reduce((a, x) => a + x.amount, 0);
+      const d = appState.dues[s.customerName];
+      if (d) d.amount = Math.max(0, d.amount - (s.grandTotal - paid));
+      appState.payments = appState.payments.filter(x => x.saleId !== s.id);
+    }
+    appState.sales = appState.sales.filter(x => x !== s);
+    saveState(); closeMemoModal(); renderMemosSection(); renderDashboard();
+    showToast('মেমো বাতিল ও স্টক ফেরত হয়েছে');
+  };
+
+  // 8. বাকি খাতা: WhatsApp রিমাইন্ডার + শূন্য বাকি মুছে ফেলা
+  const _rd = renderDueList;
+  renderDueList = function () {
+    _rd();
+    document.querySelectorAll('#due-table-body tr').forEach(tr => {
+      const n = tr.children[0]?.innerText?.trim(), d = appState.dues[n];
+      if (!d || !d.phone) return;
+      let ph = d.phone.replace(/\D/g, ''); if (ph.startsWith('0')) ph = '88' + ph;
+      const msg = encodeURIComponent(`আসসালামু আলাইকুম ${n}, ${appState.settings.name}-এ আপনার বাকি ৳${d.amount}। অনুগ্রহ করে পরিশোধ করুন। ধন্যবাদ।`);
+      tr.children[3].insertAdjacentHTML('beforeend', `<a target="_blank" href="https://wa.me/${ph}?text=${msg}" class="px-3 py-1 bg-green-50 text-green-700 rounded text-xs font-semibold">WhatsApp</a>`);
+    });
+  };
+  const _pd = payDue;
+  payDue = function (e) {
+    _pd(e);
+    Object.keys(appState.dues).forEach(k => { if (appState.dues[k].amount <= 0) delete appState.dues[k]; });
+    saveState(); renderDueList();
+  };
+
+  // 9. খরচ ফিল্টারের ** চিহ্ন ঠিক
+  const ALL = 'বর্তমানে: <strong>সমস্ত হিসাব</strong> প্রদর্শিত হচ্ছে';
+  $('expense-active-filter-text').innerHTML = ALL;
+  const _cf = clearExpenseFilters;
+  clearExpenseFilters = function () { _cf(); $('expense-active-filter-text').innerHTML = ALL; };
+
+  // 10. নিরাপদ ইম্পোর্ট + ব্যাকআপ রিমাইন্ডার
+  importData = function (e) {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (!Array.isArray(d.products)) throw 0;
+        ['products', 'sales', 'expenses', 'payments', 'purchases'].forEach(k => appState[k] = d[k] || []);
+        ['dues', 'customers', 'suppliers'].forEach(k => appState[k] = d[k] || {});
+        if (d.settings) appState.settings = d.settings;
+        saveState(); location.reload();
+      } catch { showToast('অকার্যকর ফাইল ফরম্যাট!', 'error'); }
+    };
+    r.readAsText(f);
+  };
+  const _ex = exportData;
+  exportData = function () { _ex(); localStorage.setItem('dm_lastBackup', Date.now()); };
+  setTimeout(() => {
+    if (Date.now() - (+localStorage.getItem('dm_lastBackup') || 0) > 7 * 864e5)
+      showToast('৭ দিনের বেশি ব্যাকআপ নেওয়া হয়নি — সেটিংস থেকে ব্যাকআপ নিন', 'error');
+  }, 1500);
+
+  // 11. সাপ্লায়ার ও মাল ক্রয়
+  const nb = $('nav-due').cloneNode(true);
+  nb.id = 'nav-suppliers'; nb.setAttribute('onclick', "switchTab('suppliers')");
+  nb.querySelector('i').className = 'fa-solid fa-truck w-5';
+  nb.querySelector('span').textContent = 'সাপ্লায়ার ও মাল ক্রয়';
+  $('nav-due').after(nb);
+
+  const box = 'bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm';
+  document.querySelector('main').insertAdjacentHTML('beforeend', `
+  <section id="view-suppliers" class="hidden space-y-6"><div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <form onsubmit="addPurchase(event)" class="${box} space-y-3">
+      <h3 class="font-bold text-lg">নতুন মাল ক্রয় (স্টক বাড়ান)</h3>
+      <select id="pu-prod" required class="inp"></select>
+      <input id="pu-sup" list="sup-names" type="text" required placeholder="সাপ্লায়ারের নাম" class="inp"><datalist id="sup-names"></datalist>
+      <input id="pu-qty" type="number" step="any" min="0.001" required placeholder="পরিমাণ" class="inp">
+      <input id="pu-price" type="number" step="any" min="0" required placeholder="একক ক্রয়মূল্য (৳)" class="inp">
+      <input id="pu-paid" type="number" step="any" min="0" placeholder="নগদ পরিশোধ (খালি = পূর্ণ)" class="inp">
+      <button class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg">ক্রয় সংরক্ষণ করুন</button>
+    </form>
+    <div class="lg:col-span-2 space-y-6">
+      <div class="${box}"><h3 class="font-bold text-lg mb-3">সাপ্লায়ার বাকি (আমি দেব)</h3><div id="sup-list" class="text-sm"></div></div>
+      <div class="${box} overflow-x-auto"><h3 class="font-bold text-lg mb-3">ক্রয়ের ইতিহাস</h3><div id="pu-list" class="text-xs"></div></div>
+    </div></div></section>`);
+
+  renderSuppliers = function () {
+    $('pu-prod').innerHTML = appState.products.map(p => `<option value="${p.id}">${esc(p.name)} (স্টক: ${p.stock})</option>`).join('');
+    $('sup-names').innerHTML = Object.keys(appState.suppliers).map(n => `<option value="${esc(n)}">`).join('');
+    const sups = Object.entries(appState.suppliers);
+    $('sup-list').innerHTML = sups.length ? sups.map(([n, s]) => `
+      <div class="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
+        <b>${esc(n)}</b><span class="font-bold text-red-600">৳ ${s.due.toLocaleString()}</span>
+        ${s.due > 0 ? `<button data-n="${esc(n)}" onclick="paySupplier(this.dataset.n)" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs">পরিশোধ করুন</button>` : '<span class="text-xs text-gray-400">পরিশোধিত</span>'}
+      </div>`).join('') : '<p class="text-gray-400 text-xs">কোনো সাপ্লায়ার নেই</p>';
+    $('pu-list').innerHTML = appState.purchases.length ? `<table class="w-full text-left"><tr class="text-gray-500"><th>তারিখ</th><th>সাপ্লায়ার</th><th>পণ্য</th><th>পরিমাণ</th><th>মোট</th><th>পরিশোধ</th></tr>${
+      appState.purchases.slice(0, 50).map(x => `<tr class="border-t border-gray-100 dark:border-gray-700"><td>${new Date(x.date).toLocaleDateString('bn-BD')}</td><td>${esc(x.supplier)}</td><td>${esc(x.product)}</td><td>${x.qty || '-'}</td><td>৳ ${x.total}</td><td>৳ ${x.paid}</td></tr>`).join('')}</table>` : '<p class="text-gray-400">কোনো ক্রয় নেই</p>';
+  };
+  addPurchase = function (e) {
+    e.preventDefault();
+    const p = appState.products.find(x => x.id == $('pu-prod').value), n = $('pu-sup').value.trim();
+    const q = parseFloat($('pu-qty').value), pr = parseFloat($('pu-price').value) || 0;
+    if (!p || !n || !(q > 0)) return;
+    const tot = r3(q * pr), pv = $('pu-paid').value, paid = Math.min(tot, pv === '' ? tot : parseFloat(pv) || 0), due = r3(tot - paid);
+    p.stock = r3(p.stock + q); p.buyPrice = pr;
+    const s = appState.suppliers[n] || (appState.suppliers[n] = { due: 0 });
+    s.due = r3(s.due + due);
+    appState.purchases.unshift({ id: Date.now(), date: new Date().toISOString(), supplier: n, product: p.name, qty: q, price: pr, total: tot, paid, due });
+    saveState(); e.target.reset(); renderSuppliers(); showToast('মাল ক্রয় সংরক্ষিত, স্টক আপডেট হয়েছে');
+  };
+  paySupplier = function (n) {
+    const s = appState.suppliers[n]; if (!s) return;
+    const a = parseFloat(prompt(`${n} — বাকি ৳${s.due}। কত টাকা পরিশোধ করলেন?`));
+    if (!(a > 0)) return;
+    s.due = Math.max(0, r3(s.due - a));
+    appState.purchases.unshift({ id: Date.now(), date: new Date().toISOString(), supplier: n, product: 'বাকি পরিশোধ', qty: 0, price: 0, total: 0, paid: a, due: -a });
+    saveState(); renderSuppliers();
+  };
+  const _st = switchTab;
+  switchTab = function (t) { _st(t); if (t === 'suppliers') { $('page-title').innerText = 'সাপ্লায়ার ও মাল ক্রয়'; renderSuppliers(); } };
+
+  // 12. রিপোর্ট: সেরা ৫ পণ্য + CSV/Excel এক্সপোর্ট
+  $('view-reports').insertAdjacentHTML('beforeend', `<div class="${box}"><div class="flex justify-between items-center mb-3"><h4 class="font-bold text-lg">সেরা ৫ পণ্য (লাভ অনুযায়ী)</h4><button onclick="exportSalesCSV()" class="px-3 py-1 bg-gray-600 text-white text-xs rounded-lg">Excel/CSV এক্সপোর্ট</button></div><div id="top-products"></div></div>`);
+  const _rr = renderReports;
+  renderReports = function () {
+    _rr();
+    const f = $('report-filter').value, now = new Date().toISOString();
+    const pre = f === 'today' ? now.slice(0, 10) : f === 'month' ? now.slice(0, 7) : '';
+    const m = {};
+    appState.sales.filter(s => s.date.startsWith(pre)).forEach(s => s.items.forEach(i => {
+      const x = m[i.name] || (m[i.name] = { q: 0, r: 0, p: 0 });
+      x.q += i.qty; x.r += i.sellPrice * i.qty; x.p += (i.sellPrice - i.buyPrice) * i.qty;
+    }));
+    const rows = Object.entries(m).sort((a, b) => b[1].p - a[1].p).slice(0, 5);
+    $('top-products').innerHTML = rows.length
+      ? `<table class="w-full text-sm text-left"><tr class="text-gray-500"><th>পণ্য</th><th>পরিমাণ</th><th>বিক্রি</th><th>লাভ</th></tr>${rows.map(([n, x]) => `<tr class="border-t border-gray-100 dark:border-gray-700"><td>${esc(n)}</td><td>${r3(x.q)}</td><td>৳ ${r3(x.r).toLocaleString()}</td><td class="text-emerald-600 font-bold">৳ ${r3(x.p).toLocaleString()}</td></tr>`).join('')}</table>`
+      : '<p class="text-xs text-gray-400">কোনো তথ্য নেই</p>';
+  };
+  exportSalesCSV = function () {
+    const q = v => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = [['মেমো', 'তারিখ', 'কাস্টমার', 'পণ্য', 'পরিমাণ', 'দর', 'মোট বিল', 'পেমেন্ট']];
+    appState.sales.forEach(s => s.items.forEach(i => rows.push([s.id, s.date.slice(0, 16).replace('T', ' '), s.customerName, i.name, i.qty, i.sellPrice, s.grandTotal, s.paymentMethod])));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' }));
+    a.download = 'sales.csv'; a.click();
+  };
+})();
+
+</script>
+<script>
+/* বারকোড + ক্লাউড সিঙ্ক */
+(function () {
+  const $ = id => document.getElementById(id);
+  const btn = 'px-3 py-1.5 text-white text-xs font-semibold rounded-lg ';
+
+  // ---------- বারকোড ----------
+  $('prod-name').parentElement.insertAdjacentHTML('afterend',
+    '<div><label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">বারকোড (ঐচ্ছিক)</label><div class="flex gap-2"><input id="prod-barcode" type="text" placeholder="স্ক্যান করুন বা টাইপ করুন" class="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"><button type="button" id="prod-scan" class="px-3 bg-gray-600 text-white rounded-lg"><i class="fa-solid fa-barcode"></i></button></div></div>');
+  $('pos-search').parentElement.insertAdjacentHTML('beforeend',
+    '<button id="pos-scan" type="button" class="absolute right-2 top-1.5 px-2 py-1 bg-gray-600 text-white rounded text-xs"><i class="fa-solid fa-camera mr-1"></i>স্ক্যান</button>');
+
+  const _op = openProductModal;
+  openProductModal = function (p) { _op(p); $('prod-barcode').value = p?.barcode || ''; };
+  const _sp = saveProduct;
+  saveProduct = function (e) {
+    const bc = $('prod-barcode').value.trim(), id = $('prod-id').value;
+    if (bc && appState.products.some(p => p.barcode === bc && String(p.id) !== id)) {
+      e.preventDefault(); return showToast('এই বারকোড অন্য পণ্যে আছে!', 'error');
+    }
+    _sp(e);
+    const p = id ? appState.products.find(x => String(x.id) === id) : appState.products[0];
+    if (p) { p.barcode = bc; saveState(); }
+  };
+
+  function handleCode(code) {
+    code = String(code).trim();
+    const p = appState.products.find(x => x.barcode === code);
+    if (p) { addToCart(p.id); showToast(p.name + ' যোগ হয়েছে'); } else showToast('বারকোড পাওয়া যায়নি: ' + code, 'error');
+  }
+  async function scan(cb) {
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices)
+      return showToast('ক্যামেরা স্ক্যান শুধু মোবাইল Chrome-এ (https/localhost) চলে। USB স্ক্যানার বা টাইপ করুন', 'error');
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); }
+    catch { return showToast('ক্যামেরার অনুমতি পাওয়া যায়নি', 'error'); }
+    const ov = document.createElement('div');
+    ov.className = 'fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center p-4';
+    ov.innerHTML = '<video autoplay playsinline muted class="max-w-full max-h-[70vh] rounded-lg"></video><button class="mt-4 px-5 py-2 bg-white rounded-lg font-bold">বন্ধ করুন</button>';
+    document.body.appendChild(ov);
+    const v = ov.querySelector('video'); v.srcObject = stream;
+    const det = new BarcodeDetector(); let on = true;
+    const close = () => { on = false; stream.getTracks().forEach(t => t.stop()); ov.remove(); };
+    ov.querySelector('button').onclick = close;
+    (async function loop() {
+      while (on) {
+        try { const b = await det.detect(v); if (b.length) { const val = b[0].rawValue; close(); cb(val); return; } } catch {}
+        await new Promise(r => setTimeout(r, 250));
+      }
+    })();
+  }
+  $('pos-scan').onclick = () => scan(handleCode);
+  $('prod-scan').onclick = () => scan(v => $('prod-barcode').value = v);
+  $('prod-barcode').addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+  $('pos-search').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = e.target.value.trim();
+    if (v && appState.products.some(p => p.barcode === v)) { handleCode(v); e.target.value = ''; renderPOSProducts(); }
+  });
+  // USB স্ক্যানার: POS ট্যাবে কোনো ঘরে ফোকাস না থাকলেও কাজ করে
+  let buf = '', last = 0;
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    const n = Date.now(); if (n - last > 100) buf = ''; last = n;
+    if (e.key === 'Enter') { if (buf.length >= 4 && !$('view-pos').classList.contains('hidden')) handleCode(buf); buf = ''; }
+    else if (e.key.length === 1) buf += e.key;
+  });
+
+  // ---------- ক্লাউড সিঙ্ক (নিরাপদ মার্জ + ETag) ----------
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const arr = v => Array.isArray(v) ? v.filter(Boolean) : (v && typeof v === 'object' ? Object.values(v) : []);
+  const enc = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k.replace(/[%.$#\[\]\/]/g, c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')), v]));
+  const dec = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k.replace(/%([0-9a-f]{2})/gi, (m, h) => String.fromCharCode(parseInt(h, 16))), v]));
+  const cfg = () => JSON.parse(localStorage.getItem('dm_cloud') || '{}');
+  const url = c => `${c.url.replace(/\/$/, '')}/shops/${encodeURIComponent(c.code)}.json${c.key ? '?auth=' + encodeURIComponent(c.key) : ''}`;
+  const stat = t => { const e = $('cl-status'); if (e) e.textContent = t; };
+  const now = () => new Date().toLocaleTimeString('bn-BD');
+  appState.del = JSON.parse(localStorage.getItem('dm_del') || 'null') || { products: [], sales: [], expenses: [] };
+  appState.adj = JSON.parse(localStorage.getItem('dm_adj') || '[]');
+  let applying = false, timer, dirty = false, busy = false;
+  const _s2 = saveState;
+  saveState = function () {
+    _s2();
+    localStorage.setItem('dm_del', JSON.stringify(appState.del));
+    localStorage.setItem('dm_adj', JSON.stringify(appState.adj));
+    if (applying) return;
+    dirty = true; clearTimeout(timer); timer = setTimeout(() => sync(), 1500);
+  };
+  const snap = () => { const a = appState; return { products: a.products, sales: a.sales, expenses: a.expenses, payments: a.payments, purchases: a.purchases, adj: a.adj, del: a.del, customers: enc(a.customers), dues: enc(a.dues), suppliers: enc(a.suppliers), settings: a.settings, ts: Date.now() }; };
+
+  function merge(R) {
+    const a = appState, D = a.del, RD = R.del || {}; let ch = false;
+    ['products', 'sales', 'expenses'].forEach(k => { const s = new Set([...(D[k] || []), ...arr(RD[k])]); if (s.size !== (D[k] || []).length) { D[k] = [...s]; ch = true; } });
+    const pids = new Set(a.products.map(p => p.id));
+    const stock = (id, d) => { const p = a.products.find(x => x.id === id); if (p && pids.has(p.id)) p.stock = r3(p.stock + d); };
+    const has = (l, id) => l.some(x => x.id === id);
+    const dS = new Set(D.sales), dE = new Set(D.expenses), dP = new Set(D.products);
+    a.sales.filter(s => dS.has(s.id)).forEach(s => { arr(s.items).forEach(i => stock(i.id, i.qty)); ch = true; });
+    a.sales = a.sales.filter(s => !dS.has(s.id));
+    arr(R.sales).forEach(s => { if (!dS.has(s.id) && !has(a.sales, s.id)) { s.items = arr(s.items); a.sales.push(s); s.items.forEach(i => stock(i.id, -i.qty)); ch = true; } });
+    arr(R.payments).forEach(p => { if (!has(a.payments, p.id)) { a.payments.push(p); ch = true; } });
+    a.payments = a.payments.filter(p => !(p.saleId && dS.has(p.saleId)));
+    a.expenses = a.expenses.filter(e => !dE.has(e.id));
+    arr(R.expenses).forEach(e => { if (!dE.has(e.id) && !has(a.expenses, e.id)) { a.expenses.push(e); ch = true; } });
+    arr(R.purchases).forEach(x => { if (!has(a.purchases, x.id)) { a.purchases.push(x); if (x.qty > 0) { const p = a.products.find(q => q.id === x.pid) || a.products.find(q => q.name === x.product); if (p) stock(p.id, x.qty); } ch = true; } });
+    arr(R.adj).forEach(x => { if (!has(a.adj, x.id)) { a.adj.push(x); stock(x.pid, x.d); ch = true; } });
+    a.products = a.products.filter(p => !dP.has(p.id));
+    arr(R.products).forEach(rp => {
+      const lp = a.products.find(p => p.id === rp.id);
+      if (!lp) { if (!dP.has(rp.id)) { a.products.push(rp); ch = true; } }
+      else if ((rp.u || 0) > (lp.u || 0)) { ['name', 'category', 'unit', 'buyPrice', 'sellPrice', 'alertLevel', 'barcode', 'u'].forEach(k => lp[k] = rp[k]); ch = true; }
+    });
+    const rc = dec(R.customers); Object.keys(rc).forEach(n => { if (!a.customers[n]) { a.customers[n] = rc[n]; ch = true; } });
+    if (ch) {
+      const byDate = (x, y) => new Date(y.date) - new Date(x.date);
+      a.sales.sort(byDate); a.expenses.sort(byDate); a.purchases.sort(byDate);
+      const nd = {};
+      Object.entries(a.customers).forEach(([n, c]) => { if (c.initialDue) nd[n] = (nd[n] || 0) + c.initialDue; });
+      a.sales.forEach(s => { if (s.paymentMethod === 'Due') nd[s.customerName] = (nd[s.customerName] || 0) + s.grandTotal; });
+      a.payments.forEach(p => nd[p.customerName] = (nd[p.customerName] || 0) - p.amount);
+      const old = a.dues; a.dues = {};
+      Object.entries(nd).forEach(([n, v]) => { v = r3(v); if (v > 0) a.dues[n] = { phone: (old[n] || a.customers[n] || {}).phone || '', amount: v }; });
+      const ns = {}; a.purchases.forEach(x => ns[x.supplier] = r3((ns[x.supplier] || 0) + (x.due || 0)));
+      Object.keys({ ...a.suppliers, ...ns }).forEach(n => a.suppliers[n] = { ...(a.suppliers[n] || {}), due: Math.max(0, r3(ns[n] || 0)) });
+    }
+    return ch;
+  }
+  window.dmMerge = merge;
+  async function req(u, o) { try { return await fetch(u, o); } catch (e) { if (o && o.headers) { const o2 = { ...o }; delete o2.headers; return await fetch(u, o2); } throw e; } }
+  async function sync() {
+    const c = cfg(); if (!c.url || !c.code || busy) return; busy = true;
+    try {
+      for (let t = 0; t < 3; t++) {
+        const r = await req(url(c), { headers: { 'X-Firebase-ETag': 'true' } });
+        if (!r.ok) { stat('✖ ত্রুটি ' + r.status + ' (রুলস/কী দেখুন)'); break; }
+        const etag = r.headers.get('ETag'), R = await r.json(); let ch = false;
+        if (R) {
+          applying = true; ch = merge(R); saveState(); applying = false;
+          if (ch) { initSettings(); renderDashboard(); renderPOSCategoryButtons(); renderPOSProducts(); renderInventory(); renderDueList(); renderExpenses(); renderReports(); renderSettingCustomers(); }
+        }
+        if (R && !ch && !dirty) { stat('✔ আপ-টু-ডেট ' + now()); break; }
+        dirty = false;
+        const w = await req(url(c), { method: 'PUT', headers: etag ? { 'if-match': etag } : {}, body: JSON.stringify(snap()) });
+        if (w.status === 412) continue;
+        if (w.ok) { stat('✔ সিঙ্ক হয়েছে ' + now()); break; }
+        dirty = true; stat('✖ ত্রুটি ' + w.status); break;
+      }
+    } catch { dirty = true; stat('✖ ইন্টারনেট বা URL সমস্যা'); } finally { busy = false; }
+  }
+  // মোছা/বাতিল রেকর্ড মনে রাখা (যাতে অন্য ডিভাইসে ফিরে না আসে)
+  const track = (fn, key, list) => {
+    const o = window[fn];
+    window[fn] = function () {
+      const b = new Set(appState[list].map(x => x.id)); o.apply(this, arguments);
+      const a = new Set(appState[list].map(x => x.id)), gone = [...b].filter(i => !a.has(i));
+      if (gone.length) { appState.del[key].push(...gone); saveState(); }
+    };
+  };
+  track('deleteProduct', 'products', 'products'); track('cancelSale', 'sales', 'sales'); track('deleteExpense', 'expenses', 'expenses');
+  const _sp2 = saveProduct;
+  saveProduct = function (e) {
+    const id = $('prod-id').value, before = id ? (appState.products.find(p => String(p.id) === id) || {}).stock : null;
+    _sp2(e);
+    if (!$('product-modal').classList.contains('hidden')) return;
+    const p = id ? appState.products.find(x => String(x.id) === id) : appState.products[0];
+    if (p) { p.u = Date.now(); if (id && before != null && p.stock !== before) appState.adj.push({ id: 'A' + Date.now(), pid: p.id, d: r3(p.stock - before) }); saveState(); }
+  };
+  const _ap = addPurchase;
+  addPurchase = function (e) {
+    const pid = +$('pu-prod').value, n = appState.purchases.length; _ap(e);
+    if (appState.purchases.length > n) { appState.purchases[0].pid = pid; const p = appState.products.find(x => x.id === pid); if (p) p.u = Date.now(); saveState(); }
+  };
+  const c0 = cfg();
+  $('view-settings').firstElementChild.insertAdjacentHTML('beforeend', `
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-3 md:col-span-2">
+    <h3 class="font-bold text-lg border-b pb-2"><i class="fa-solid fa-cloud text-emerald-600 mr-2"></i>ক্লাউড সিঙ্ক (একাধিক ডিভাইস)</h3>
+    <input id="cl-url" type="text" placeholder="Firebase Database URL (https://xxxx-default-rtdb.firebaseio.com)" value="${c0.url || ''}" class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <input id="cl-code" type="text" placeholder="সিঙ্ক কোড (গোপন, যেমন: rahim-store-8392)" value="${c0.code || ''}" class="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">
+      <input id="cl-key" type="text" placeholder="Database Secret / Token (ঐচ্ছিক)" value="${c0.key || ''}" class="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button onclick="saveCloud()" class="${btn}bg-emerald-600">সংযুক্ত করুন</button>
+      <button onclick="syncNow()" class="${btn}bg-blue-600">এখনই সিঙ্ক করুন</button>
+      <span id="cl-status" class="text-xs text-gray-500"></span>
+    </div>
+    <p class="text-[11px] text-gray-400">দুই ডিভাইসের ডেটা এখন মিলিয়ে একসাথে রাখা হয় (একটা অন্যটাকে মুছে ফেলে না)। প্রতি ৩০ সেকেন্ডে অটো সিঙ্ক হয়।</p>
+  </div>`);
+  saveCloud = function () {
+    const c = { url: $('cl-url').value.trim(), code: $('cl-code').value.trim(), key: $('cl-key').value.trim() };
+    if (!/^https:\/\/.+/.test(c.url) || c.code.length < 6) return showToast('সঠিক URL ও ৬+ অক্ষরের সিঙ্ক কোড দিন', 'error');
+    localStorage.setItem('dm_cloud', JSON.stringify(c)); dirty = true; sync();
+  };
+  syncNow = () => sync();
+  setTimeout(() => sync(), 1200); setInterval(() => sync(), 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
+})();
+
+</script>
+<script>
+/* আইকন ফলব্যাক: FontAwesome লোড না হলে ইমোজি দেখায় */
+(function () {
+  const M = {store:'🏪','chart-line':'📈','cart-shopping':'🛒',receipt:'🧾','boxes-stacked':'📦','book-bookmark':'📒',wallet:'👛','file-invoice-dollar':'📊',gear:'⚙️',xmark:'✖',bars:'☰',plus:'➕',moon:'🌙',sun:'☀️','bangladeshi-taka-sign':'৳','chart-pie':'📊','hand-holding-dollar':'💰','triangle-exclamation':'⚠️','magnifying-glass':'🔍','trash-can':'🗑','trash':'🗑','check-circle':'✅','circle-check':'✅','circle-exclamation':'❗','boxes-packing':'📦','sack-dollar':'💰','list-check':'📋','calendar-day':'📅','calendar-days':'📅',clock:'🕒','rotate-left':'↩','filter':'🔽','user-check':'👤',download:'⬇',upload:'⬆','address-book':'📇','user-plus':'👤',  'pen-to-square':'✏️',print:'🖨',truck:'🚚',barcode:'▮▯▮',camera:'📷',cloud:'☁️'};
+  function swap(root) {
+    (root.querySelectorAll ? root.querySelectorAll('i.fa-solid,i.fas') : []).forEach(i => {
+      if (i.dataset.fb) return;
+      const k = [...i.classList].find(c => c.startsWith('fa-') && M[c.slice(3)]);
+      if (k) { i.dataset.fb = 1; i.className = 'not-italic'; i.textContent = M[k.slice(3)]; }
+    });
+  }
+  function enable() {
+    swap(document);
+    new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => n.nodeType === 1 && (n.matches('i.fa-solid') ? swap(n.parentNode) : swap(n))))).observe(document.body, { childList: true, subtree: true });
+  }
+  window.addEventListener('load', () => {
+    if (!document.fonts || !document.fonts.load) return;
+    document.fonts.load('900 16px "Font Awesome 6 Free"').then(f => { if (!f.length || f.some(x => x.status === 'error')) enable(); }).catch(enable);
+    setTimeout(() => { if (!document.fonts.check('900 16px "Font Awesome 6 Free"')) enable(); }, 4000);
+  });
+})();
+
+</script>
+<script>
+/* তারিখ ও সময় আপগ্রেড */
+(function () {
+  const $ = id => document.getElementById(id);
+  const p2 = n => String(n).padStart(2, '0');
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ymd = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const add = (d, k) => { const x = new Date(d); x.setDate(x.getDate() + k); return x; };
+  const inp = 'px-2 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-xs';
+
+  // ১. লাইভ তারিখ-সময় (হেডারে) + মধ্যরাতে অটো রিফ্রেশ
+  $('theme-icon').closest('button').parentElement.insertAdjacentHTML('afterbegin',
+    '<div id="live-clock" class="hidden md:block text-right leading-tight"><div id="lc-date" class="text-xs font-semibold"></div><div id="lc-time" class="text-[11px] text-gray-500 dark:text-gray-400"></div></div>');
+  let day = ymd(new Date());
+  function tick() {
+    const n = new Date();
+    $('lc-date').textContent = n.toLocaleDateString('bn-BD', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    $('lc-time').textContent = n.toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (ymd(n) !== day) { day = ymd(n); renderDashboard(); $('exp-date').value = day; }
+  }
+  tick(); setInterval(tick, 1000);
+
+  // ২. রিপোর্টে সময়কাল: আজ, গতকাল, সপ্তাহ, মাস, গত মাস, বছর, কাস্টম
+  $('report-filter').innerHTML = `<option value="today">আজ</option><option value="yesterday">গতকাল</option><option value="week">এই সপ্তাহ (শনি থেকে)</option><option value="month" selected>এই মাস</option><option value="lastmonth">গত মাস</option><option value="year">এই বছর</option><option value="custom">তারিখ বেছে নিন</option><option value="all">সব রেকর্ড</option>`;
+  $('report-filter').parentElement.insertAdjacentHTML('beforeend',
+    `<div id="rp-custom" class="hidden flex items-center gap-2"><input type="date" id="rp-from" onchange="renderReports()" class="${inp}"><span>থেকে</span><input type="date" id="rp-to" onchange="renderReports()" class="${inp}"></div><span id="rp-label" class="text-xs text-gray-500 w-full sm:w-auto"></span>`);
+  $('report-filter').parentElement.classList.add('flex-wrap', 'gap-2');
+
+  function range() {
+    const v = $('report-filter').value, n = new Date(), t = ymd(n), A = '0000-00-00', Z = '9999-99-99';
+    if (v === 'today') return [t, t];
+    if (v === 'yesterday') { const y = ymd(add(n, -1)); return [y, y]; }
+    if (v === 'week') return [ymd(add(n, -((n.getDay() + 1) % 7))), t];
+    if (v === 'month') return [`${n.getFullYear()}-${p2(n.getMonth() + 1)}-01`, t];
+    if (v === 'lastmonth') return [ymd(new Date(n.getFullYear(), n.getMonth() - 1, 1)), ymd(new Date(n.getFullYear(), n.getMonth(), 0))];
+    if (v === 'year') return [`${n.getFullYear()}-01-01`, t];
+    if (v === 'custom') return [$('rp-from').value || A, $('rp-to').value || Z];
+    return [A, Z];
+  }
+  const inR = (d, r) => { const k = ymd(new Date(d)); return k >= r[0] && k <= r[1]; };
+  const fmt = k => new Date(k + 'T00:00:00').toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  renderReports = function () {
+    const r = range(), v = $('report-filter').value;
+    $('rp-custom').classList.toggle('hidden', v !== 'custom');
+    $('rp-label').textContent = r[0] === '0000-00-00' && r[1] === '9999-99-99' ? '' : (r[0] === r[1] ? fmt(r[0]) : (r[0] < '0001' ? '' : fmt(r[0])) + ' – ' + (r[1] > '9998' ? 'আজ' : fmt(r[1])));
+    const S = appState.sales.filter(s => inR(s.date, r)), E = appState.expenses.filter(e => inR(e.date, r));
+    const ts = S.reduce((a, s) => a + s.grandTotal, 0), te = E.reduce((a, e) => a + e.amount, 0);
+    const cogs = S.reduce((a, s) => a + s.items.reduce((b, i) => b + i.buyPrice * i.qty, 0), 0);
+    const np = ts - (cogs + te);
+    $('report-total-sales').innerText = `৳ ${r3(ts).toLocaleString()}`;
+    $('report-total-expenses').innerText = `৳ ${r3(te).toLocaleString()}`;
+    $('report-net-profit').innerText = `৳ ${r3(np).toLocaleString()}`;
+    renderSalesTrendChart(S); renderPaymentPieChart(S); renderProfitDoughnutChart(ts, te, np);
+    const m = {};
+    S.forEach(s => s.items.forEach(i => { const x = m[i.name] || (m[i.name] = { q: 0, r: 0, p: 0 }); x.q += i.qty; x.r += i.sellPrice * i.qty; x.p += (i.sellPrice - i.buyPrice) * i.qty; }));
+    const rows = Object.entries(m).sort((a, b) => b[1].p - a[1].p).slice(0, 5);
+    const tp = $('top-products');
+    if (tp) tp.innerHTML = rows.length
+      ? `<table class="w-full text-sm text-left"><tr class="text-gray-500"><th>পণ্য</th><th>পরিমাণ</th><th>বিক্রি</th><th>লাভ</th></tr>${rows.map(([n, x]) => `<tr class="border-t border-gray-100 dark:border-gray-700"><td>${esc(n)}</td><td>${r3(x.q)}</td><td>৳ ${r3(x.r).toLocaleString()}</td><td class="text-emerald-600 font-bold">৳ ${r3(x.p).toLocaleString()}</td></tr>`).join('')}</table>`
+      : '<p class="text-xs text-gray-400">কোনো তথ্য নেই</p>';
+  };
+
+  // ৩. মেমো তালিকায় তারিখ ফিল্টার
+  $('memo-payment-filter').parentElement.insertAdjacentHTML('beforeend',
+    `<input type="date" id="memo-from" onchange="renderMemosSection()" class="${inp}" title="শুরু"><span class="text-xs">–</span><input type="date" id="memo-to" onchange="renderMemosSection()" class="${inp}" title="শেষ">`);
+  $('memo-payment-filter').parentElement.classList.add('flex-wrap', 'gap-1');
+  renderMemosSection = function () {
+    const tb = $('memos-section-table'); if (!tb) return;
+    const q = ($('memo-search').value || '').toLowerCase().trim(), fm = $('memo-payment-filter').value;
+    const r = [$('memo-from').value || '0000-00-00', $('memo-to').value || '9999-99-99'];
+    const L = appState.sales.filter(s => (s.id.toLowerCase().includes(q) || s.customerName.toLowerCase().includes(q)) && (fm === 'all' || s.paymentMethod === fm) && inR(s.date, r));
+    $('memo-count-badge').innerText = `${L.length} টি মেমো`;
+    tb.innerHTML = L.length ? L.map(s => `<tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50"><td class="p-3 font-semibold text-emerald-600">${esc(s.id)}</td><td class="p-3 text-xs">${new Date(s.date).toLocaleString('bn-BD')}</td><td class="p-3 font-medium">${esc(s.customerName)}</td><td class="p-3 text-right font-bold">৳ ${s.grandTotal.toLocaleString()}</td><td class="p-3 text-center"><span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs font-semibold">${esc(s.paymentMethod)}</span></td><td class="p-3 text-center"><button onclick='viewMemoById("${esc(s.id)}")' class="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 rounded text-xs font-semibold">মেমো দেখুন</button></td></tr>`).join('')
+      : '<tr><td colspan="6" class="p-4 text-center text-gray-400">কোনো মেমো রেকর্ড পাওয়া যায়নি</td></tr>';
+  };
+
+  // ৪. খরচে তারিখ বেছে নেওয়া (পুরনো দিনের হিসাব তোলার জন্য)
+  $('expense-amount').parentElement.insertAdjacentHTML('beforebegin',
+    '<div><label class="block text-xs font-medium text-gray-500 mb-1">তারিখ (পুরনো হিসাব হলে বদলান)</label><input type="date" id="exp-date" class="inp"></div>');
+  $('exp-date').value = ymd(new Date()); $('exp-date').max = ymd(new Date());
+  addExpense = function (e) {
+    e.preventDefault();
+    const type = $('expense-type').value, ti = $('expense-title').value.trim();
+    const staff = type === 'কর্মচারী বেতন' ? $('expense-staff-name').value.trim() : '';
+    const amount = parseFloat($('expense-amount').value) || 0;
+    if (amount <= 0) return;
+    if (type === 'কর্মচারী বেতন' && !staff) return showToast('কর্মচারীর নাম উল্লেখ করুন!', 'error');
+    const pick = $('exp-date').value || ymd(new Date());
+    const date = pick === ymd(new Date()) ? new Date().toISOString() : new Date(pick + 'T12:00:00').toISOString();
+    appState.expenses.unshift({ id: Date.now(), date, type, title: ti || (staff ? `কর্মচারী বেতন (${staff})` : type), staffName: staff, amount });
+    appState.expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+    saveState();
+    ['expense-title', 'expense-staff-name', 'expense-amount'].forEach(k => $(k).value = '');
+    $('exp-date').value = ymd(new Date());
+    renderExpenses(); renderDashboard(); showToast('নতুন খরচ সফলভাবে যোগ করা হয়েছে');
+  };
+})();
+
+</script>
+<script>
+/* লেজার ফিক্স: অদ্ভুত চিহ্নযুক্ত নামেও খুলবে + এরর দেখাবে */
+(function () {
+  const $ = id => document.getElementById(id);
+  $('ledger-modal').classList.add('z-[70]');
+  ['openCustomerLedger', 'openStaffSalaryLedger'].forEach(n => {
+    const o = window[n];
+    window[n] = function (x) { try { o(x); } catch (e) { showToast('লেজার এরর: ' + e.message, 'error'); console.error(e); } };
+  });
+  function bind(sel, rowSel, nameSel, fn, prefix) {
+    document.querySelectorAll(sel).forEach(b => {
+      if (!(b.getAttribute('onclick') || '').startsWith(prefix)) return;
+      const row = b.closest(rowSel), nm = row && row.querySelector(nameSel);
+      if (nm) { const name = nm.innerText.trim(); b.removeAttribute('onclick'); b.onclick = () => window[fn](name); }
+    });
+  }
+  const hook = (n, f) => { const o = window[n]; window[n] = function () { o.apply(this, arguments); f(); }; };
+  hook('renderDueList', () => {
+    bind('#due-table-body button', 'tr', 'td', 'openCustomerLedger', 'openCustomerLedger');
+    document.querySelectorAll('#due-table-body td.cursor-pointer').forEach(td => { const n = td.innerText.trim(); td.removeAttribute('onclick'); td.onclick = () => openCustomerLedger(n); });
+  });
+  hook('renderSettingCustomers', () => bind('#setting-customer-list button', '.py-2', 'span.font-bold', 'openCustomerLedger', 'openCustomerLedger'));
+  hook('renderExpenses', () => document.querySelectorAll('#expense-table-body button').forEach(b => {
+    if (!(b.getAttribute('onclick') || '').startsWith('openStaffSalaryLedger')) return;
+    const n = b.querySelector('span').innerText.trim(); b.removeAttribute('onclick'); b.onclick = () => openStaffSalaryLedger(n);
+  }));
+  renderDueList(); renderSettingCustomers(); renderExpenses();
+})();
+
+</script>
+<script>
+/* v4: লাভের হিসাব, পিন লক, ব্যবহারের সুবিধা */
+(function () {
+  const $ = id => document.getElementById(id);
+  const p2 = n => String(n).padStart(2, '0');
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const ymd = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const box = 'bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm';
+
+  // ১. লাভের হিসাব: নগদ আদায় বনাম বাকি আলাদা
+  $('dash-today-profit').closest('div.bg-white').querySelector('p.text-xs').textContent = 'বাকি সহ: বিক্রি − (ক্রয়মূল্য + খরচ)';
+  $('dash-today-profit').closest('.grid').insertAdjacentHTML('afterend', `<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="${box}"><p class="text-sm text-gray-500">আজ নগদ আদায়</p><h3 class="text-2xl font-bold text-emerald-600" id="dash-cash-in">৳ 0</h3><p class="text-xs text-gray-500 mt-1">নগদ/বিকাশ বিক্রি + বাকি জমা</p></div>
+    <div class="${box}"><p class="text-sm text-gray-500">আজ নতুন বাকি পড়েছে</p><h3 class="text-2xl font-bold text-red-500" id="dash-new-due">৳ 0</h3><p class="text-xs text-gray-500 mt-1">এখনো টাকা আসেনি</p></div>
+    <div class="${box}"><p class="text-sm text-gray-500">আজ হাতে আসা (আদায় − খরচ)</p><h3 class="text-2xl font-bold text-blue-600" id="dash-cash-net">৳ 0</h3><p class="text-xs text-gray-500 mt-1">ক্রয়ের খরচ বাদে</p></div></div>`);
+  const _rdb = renderDashboard;
+  renderDashboard = function () {
+    _rdb();
+    const t = ymd(new Date()), S = appState.sales.filter(s => ymd(new Date(s.date)) === t), P = appState.payments.filter(x => ymd(new Date(x.date)) === t);
+    const cash = S.filter(s => s.paymentMethod !== 'Due').reduce((a, s) => a + s.grandTotal, 0) + P.reduce((a, x) => a + x.amount, 0);
+    const nd = S.filter(s => s.paymentMethod === 'Due').reduce((a, s) => a + s.grandTotal, 0) - P.filter(x => x.saleId && S.some(s => s.id === x.saleId)).reduce((a, x) => a + x.amount, 0);
+    const ex = appState.expenses.filter(e => ymd(new Date(e.date)) === t).reduce((a, e) => a + e.amount, 0);
+    $('dash-cash-in').textContent = '৳ ' + r3(cash).toLocaleString();
+    $('dash-new-due').textContent = '৳ ' + r3(nd).toLocaleString();
+    $('dash-cash-net').textContent = '৳ ' + r3(cash - ex).toLocaleString();
+  };
+
+  // ২. পিন লক (মালিক / স্টাফ)
+  const PK = 'dm_pin', pins = () => JSON.parse(localStorage.getItem(PK) || '{}');
+  const hash = async s => {
+    const d = new TextEncoder().encode('dm|' + s);
+    if (window.crypto && crypto.subtle) return [...new Uint8Array(await crypto.subtle.digest('SHA-256', d))].map(x => x.toString(16).padStart(2, '0')).join('');
+    let h = 5381; for (const c of s) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return 'x' + h;
+  };
+  let role = 'owner', tries = 0, idle;
+  const STAFF_OK = ['pos', 'memos', 'inventory', 'due'];
+  document.body.insertAdjacentHTML('beforeend', `<div id="lock" class="hidden fixed inset-0 z-[100] bg-emerald-700 flex items-center justify-center p-4"><div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-xs text-center space-y-3"><div class="text-4xl">🔒</div><h2 class="font-bold text-lg">পিন দিন</h2><input id="lock-pin" type="password" inputmode="numeric" maxlength="6" class="w-full text-center tracking-widest text-xl px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700"><p id="lock-msg" class="text-xs text-red-500 h-4"></p><button id="lock-btn" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg">খুলুন</button></div></div>`);
+  function applyRole() {
+    const staff = role === 'staff';
+    document.querySelectorAll('.nav-btn,#bnav button').forEach(b => {
+      const m = (b.getAttribute('onclick') || '').match(/switchTab\('(\w+)'\)/);
+      b.style.display = staff && m && !STAFF_OK.includes(m[1]) ? 'none' : '';
+    });
+    const cb = document.querySelector('#memo-view-modal button[onclick="cancelSale()"]'); if (cb) cb.style.display = staff ? 'none' : '';
+    switchTab(staff ? 'pos' : 'dashboard');
+  }
+  function lockApp() {
+    if (!pins().owner) return;
+    $('lock').classList.remove('hidden'); $('lock-pin').value = ''; $('lock-msg').textContent = ''; setTimeout(() => $('lock-pin').focus(), 50);
+  }
+  window.lockApp = lockApp;
+  async function tryUnlock() {
+    const v = $('lock-pin').value, P = pins();
+    if (tries >= 5) return $('lock-msg').textContent = 'অনেকবার ভুল। ৩০ সেকেন্ড পরে চেষ্টা করুন';
+    const h = await hash(v);
+    if (h === P.owner) role = 'owner'; else if (P.staff && h === P.staff) role = 'staff';
+    else { tries++; if (tries >= 5) setTimeout(() => tries = 0, 30000); return $('lock-msg').textContent = 'ভুল পিন'; }
+    tries = 0; $('lock').classList.add('hidden'); applyRole(); resetIdle();
+  }
+  $('lock-btn').onclick = tryUnlock;
+  $('lock-pin').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+  function resetIdle() { clearTimeout(idle); if (pins().owner) idle = setTimeout(lockApp, 10 * 60 * 1000); }
+  ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, resetIdle, { passive: true }));
+  const _stp = switchTab;
+  switchTab = function (t) {
+    if (role === 'staff' && !STAFF_OK.includes(t)) t = 'pos';
+    _stp(t);
+    document.querySelectorAll('#bnav button').forEach(b => b.classList.toggle('text-emerald-600', (b.getAttribute('onclick') || '').includes(`'${t}'`)));
+  };
+  $('theme-icon').closest('button').insertAdjacentHTML('beforebegin', '<button onclick="lockApp()" title="লক করুন" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700">🔒</button>');
+  savePins = async function () {
+    const o = $('pin-owner').value.trim(), s = $('pin-staff').value.trim();
+    if (!/^\d{4,6}$/.test(o)) return showToast('মালিকের পিন ৪–৬ সংখ্যার হতে হবে', 'error');
+    if (s && (!/^\d{4,6}$/.test(s) || s === o)) return showToast('স্টাফ পিন ৪–৬ সংখ্যার ও মালিকের থেকে আলাদা হতে হবে', 'error');
+    localStorage.setItem(PK, JSON.stringify({ owner: await hash(o), staff: s ? await hash(s) : '' }));
+    $('pin-owner').value = $('pin-staff').value = ''; showToast('পিন সেভ হয়েছে'); resetIdle();
+  };
+  removePins = () => { if (confirm('পিন লক বন্ধ করবেন?')) { localStorage.removeItem(PK); showToast('পিন বন্ধ করা হয়েছে'); } };
+  $('view-settings').firstElementChild.insertAdjacentHTML('beforeend', `<div class="${box} space-y-3"><h3 class="font-bold text-lg border-b pb-2">🔒 পিন লক</h3>
+    <input id="pin-owner" type="password" inputmode="numeric" maxlength="6" placeholder="মালিকের পিন (৪–৬ সংখ্যা)" class="inp">
+    <input id="pin-staff" type="password" inputmode="numeric" maxlength="6" placeholder="স্টাফের পিন (ঐচ্ছিক)" class="inp">
+    <div class="flex gap-2"><button onclick="savePins()" class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg">পিন সেভ করুন</button><button onclick="removePins()" class="px-3 py-1.5 bg-gray-500 text-white text-xs font-semibold rounded-lg">পিন বন্ধ করুন</button></div>
+    <p class="text-[11px] text-gray-400">স্টাফ শুধু বিক্রি, মেমো, স্টক ও বাকি জমা দেখতে পারবে। লাভ, খরচ, রিপোর্ট, সেটিংস ও মেমো বাতিল শুধু মালিক। ১০ মিনিট নিষ্ক্রিয় থাকলে অটো লক হয়। এটা সাধারণ ব্যবহারকারীর জন্য সুরক্ষা; ব্রাউজারের টুল জানা কেউ ডেটা দেখতে পারে।</p></div>`);
+
+  // ৩. ব্যবহারের সুবিধা: নিচের নেভিগেশন (মোবাইল)
+  document.body.insertAdjacentHTML('beforeend', `<nav id="bnav" class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex">${[['dashboard', 'fa-chart-line', 'ড্যাশবোর্ড'], ['pos', 'fa-cart-shopping', 'বিক্রি'], ['memos', 'fa-receipt', 'মেমো'], ['inventory', 'fa-boxes-stacked', 'স্টক']].map(([t, i, l]) => `<button onclick="switchTab('${t}')" class="flex-1 py-2 text-[11px] flex flex-col items-center"><i class="fa-solid ${i} text-lg"></i>${l}</button>`).join('')}<button onclick="toggleSidebar()" class="flex-1 py-2 text-[11px] flex flex-col items-center"><i class="fa-solid fa-bars text-lg"></i>মেনু</button></nav>`);
+  document.querySelector('main').classList.add('pb-20', 'md:pb-6');
+
+  // কীবোর্ড শর্টকাট
+  document.addEventListener('keydown', e => {
+    if (!$('lock').classList.contains('hidden')) return;
+    if (e.key === 'F2') { e.preventDefault(); switchTab('pos'); $('pos-search').focus(); }
+    else if (e.key === 'F9' && !$('view-pos').classList.contains('hidden')) { e.preventDefault(); processCheckout(); }
+    else if (e.key === 'Escape') { closeProductModal(); closeDueModal(); closeLedgerModal(); closeMemoModal(); }
+  });
+  document.querySelector('#sidebar .text-xs.text-center').insertAdjacentHTML('beforeend', '<p class="mt-1">F2 বিক্রি · F9 সম্পন্ন · Esc বন্ধ</p>');
+
+  // মেমো কাগজের মাপ (৫৮mm / ৮০mm)
+  const ps = document.createElement('style'); document.head.appendChild(ps);
+  const setPaper = w => { localStorage.setItem('dm_paper', w); ps.textContent = `@media print{@page{size:${w}mm auto;margin:2mm}#printable-receipt{width:${w}mm!important;max-width:none!important;margin:0!important;padding:0!important}}`; };
+  setPaper(localStorage.getItem('dm_paper') || '80');
+  $('view-settings').firstElementChild.insertAdjacentHTML('beforeend', `<div class="${box} space-y-2"><h3 class="font-bold text-lg border-b pb-2">🖨 মেমো প্রিন্টের মাপ</h3><select id="paper-sel" onchange="setPaperSize(this.value)" class="inp"><option value="80">৮০mm থার্মাল প্রিন্টার</option><option value="58">৫৮mm থার্মাল প্রিন্টার</option></select></div>`);
+  $('paper-sel').value = localStorage.getItem('dm_paper') || '80'; window.setPaperSize = setPaper;
+
+  // PWA (শুধু https/http হোস্টিংয়ে)
+  if (/^https?:$/.test(location.protocol)) {
+    const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.json'; document.head.appendChild(l);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // শুরুতে লক
+  if (pins().owner) lockApp(); else resetIdle();
+})();
+
+</script>
 </body>
 </html>
