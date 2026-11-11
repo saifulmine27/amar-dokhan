@@ -70,8 +70,104 @@
             }
         }
     </style>
+    <!-- সাইটের লগইন সেটআপ: Firebase Web API Key ও Database URL এখানে বসান -->
+    <script>window.DM_CONFIG = { apiKey: "", dbUrl: "" };</script>
+    <style id="dm-gate">body>*:not(#dm-login){visibility:hidden!important;pointer-events:none!important}</style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 transition-colors duration-200">
+<div id="dm-login" style="position:fixed;inset:0;z-index:2147483000;background:#047857;display:flex;align-items:center;justify-content:center;padding:16px;font-family:'Hind Siliguri',sans-serif">
+  <div style="background:#fff;color:#111827;border-radius:16px;padding:24px;width:100%;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-size:40px;text-align:center">🏪</div>
+    <h2 style="text-align:center;font-weight:700;font-size:20px;margin:4px 0 2px">দোকান ম্যানেজার</h2>
+    <p id="dml-sub" style="text-align:center;font-size:12px;color:#6b7280;margin:0 0 14px">চালিয়ে যেতে লগইন করুন</p>
+    <div id="dml-setup" style="display:none">
+      <p style="font-size:12px;color:#6b7280;margin:0 0 8px">প্রথমবার সেটআপ: Firebase-এর তথ্য দিন (Project settings থেকে)।</p>
+      <input id="dms-key" placeholder="Web API Key" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:8px;border:1px solid #d1d5db;border-radius:8px">
+      <input id="dms-db" placeholder="Database URL (https://...)" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:8px;border:1px solid #d1d5db;border-radius:8px">
+      <button id="dms-go" style="width:100%;padding:10px;background:#059669;color:#fff;font-weight:700;border:0;border-radius:8px;cursor:pointer">সেভ করুন</button>
+    </div>
+    <div id="dml-form" style="display:none">
+      <input id="dml-email" type="email" autocomplete="username" placeholder="ইমেইল" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:8px;border:1px solid #d1d5db;border-radius:8px">
+      <input id="dml-pass" type="password" autocomplete="current-password" placeholder="পাসওয়ার্ড" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:8px;border:1px solid #d1d5db;border-radius:8px">
+      <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:#4b5563;margin-bottom:8px"><input id="dml-rem" type="checkbox" checked> এই ডিভাইসে ৩০ দিন মনে রাখুন</label>
+      <button id="dml-go" style="width:100%;padding:10px;background:#059669;color:#fff;font-weight:700;border:0;border-radius:8px;cursor:pointer">লগইন</button>
+    </div>
+    <p id="dml-msg" style="color:#dc2626;font-size:12px;min-height:16px;margin:8px 0 0;text-align:center"></p>
+  </div>
+</div>
+<script>
+(function () {
+  const $ = id => document.getElementById(id), GS = $('dm-gate');
+  const K = 'dm_auth', C = 'dm_fbcfg', MAXDAYS = 30;
+  const J = (s, k) => { try { return JSON.parse(s.getItem(k)); } catch { return null; } };
+  const cfg = () => { const c = window.DM_CONFIG || {}, l = J(localStorage, C) || {}, o = J(localStorage, 'dm_cloud') || {}; return { apiKey: c.apiKey || l.apiKey || '', dbUrl: String(c.dbUrl || l.dbUrl || o.url || '').replace(/\/$/, '') }; };
+  const saved = () => J(localStorage, K) || J(sessionStorage, K);
+  const persist = a => { const st = a.remember ? localStorage : sessionStorage, ot = a.remember ? sessionStorage : localStorage; ot.removeItem(K); st.setItem(K, JSON.stringify(a)); };
+  const clear = () => { localStorage.removeItem(K); sessionStorage.removeItem(K); };
+  let timer, unlocked = false;
+  const msg = t => $('dml-msg').textContent = t || '';
+  async function post(url, body, form) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': form ? 'application/x-www-form-urlencoded' : 'application/json' }, body: form ? body : JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error((d.error && d.error.message) || 'ERR ' + r.status); e.auth = r.status >= 400 && r.status < 500; throw e; }
+    return d;
+  }
+  function apply(idToken, uid, exp) {
+    const c = cfg();
+    if (c.dbUrl) { localStorage.setItem(C, JSON.stringify({ apiKey: c.apiKey, dbUrl: c.dbUrl })); localStorage.setItem('dm_cloud', JSON.stringify({ url: c.dbUrl, code: uid, key: idToken })); }
+    clearTimeout(timer); timer = setTimeout(refresh, Math.max(60, exp - 300) * 1000);
+  }
+  async function refresh() {
+    const a = saved(); if (!a) return false;
+    try {
+      const d = await post('https://securetoken.googleapis.com/v1/token?key=' + cfg().apiKey, 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(a.refresh), true);
+      a.refresh = d.refresh_token || a.refresh; a.uid = d.user_id; persist(a); apply(d.id_token, d.user_id, +d.expires_in || 3600); return true;
+    } catch (e) {
+      if (e.auth) { clear(); if (unlocked) lock(); return false; }
+      clearTimeout(timer); timer = setTimeout(refresh, 60000); return null;
+    }
+  }
+  function lock() { unlocked = false; document.head.appendChild(GS); $('dm-login').style.display = 'flex'; showLogin(); }
+  function unlock(offline) {
+    unlocked = true; GS.remove(); $('dm-login').style.display = 'none';
+    window.dispatchEvent(new Event('resize')); window.dispatchEvent(new CustomEvent('dm-auth', { detail: { offline: !!offline } }));
+  }
+  function showLogin() { $('dml-setup').style.display = 'none'; $('dml-form').style.display = 'block'; $('dml-pass').value = ''; msg(''); }
+  function showSetup() { $('dml-form').style.display = 'none'; $('dml-setup').style.display = 'block'; $('dml-sub').textContent = 'প্রথমবার সেটআপ দরকার'; }
+  const ERR = { INVALID_LOGIN_CREDENTIALS: 'ইমেইল বা পাসওয়ার্ড ভুল', INVALID_PASSWORD: 'ইমেইল বা পাসওয়ার্ড ভুল', EMAIL_NOT_FOUND: 'ইমেইল বা পাসওয়ার্ড ভুল', INVALID_EMAIL: 'ইমেইল ঠিক নয়', USER_DISABLED: 'এই অ্যাকাউন্ট বন্ধ করা আছে', TOO_MANY_ATTEMPTS_TRY_LATER: 'অনেকবার ভুল হয়েছে, কিছুক্ষণ পরে চেষ্টা করুন' };
+  async function login() {
+    const e = $('dml-email').value.trim(), p = $('dml-pass').value; if (!e || !p) return msg('ইমেইল ও পাসওয়ার্ড দিন');
+    $('dml-go').disabled = true; msg('');
+    try {
+      const d = await post('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=' + cfg().apiKey, { email: e, password: p, returnSecureToken: true });
+      persist({ refresh: d.refreshToken, email: d.email, uid: d.localId, at: Date.now(), remember: $('dml-rem').checked });
+      apply(d.idToken, d.localId, +d.expiresIn || 3600); unlock();
+    } catch (x) { msg(x.auth ? (ERR[x.message.split(' ')[0]] || 'লগইন হয়নি: ' + x.message) : 'ইন্টারনেট সংযোগ নেই। সংযোগ দিয়ে আবার চেষ্টা করুন'); }
+    finally { $('dml-go').disabled = false; }
+  }
+  $('dml-go').onclick = login; $('dml-pass').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  $('dms-go').onclick = () => {
+    const k = $('dms-key').value.trim(), u = $('dms-db').value.trim(); if (!k) return msg('Web API Key দিন');
+    localStorage.setItem(C, JSON.stringify({ apiKey: k, dbUrl: u })); $('dml-sub').textContent = 'চালিয়ে যেতে লগইন করুন'; showLogin();
+  };
+  window.DM_AUTH = {
+    isUnlocked: () => unlocked, email: () => (saved() || {}).email || '', hasDb: () => !!cfg().dbUrl,
+    logout(wipe) {
+      clearTimeout(timer); clear(); localStorage.removeItem('dm_cloud');
+      if (wipe) Object.keys(localStorage).filter(k => k.startsWith('dm_') && k !== C).forEach(k => localStorage.removeItem(k));
+      location.reload();
+    }
+  };
+  (async function start() {
+    if (!cfg().apiKey) return showSetup();
+    const a = saved();
+    if (a && Date.now() - a.at < MAXDAYS * 864e5) { const r = await refresh(); if (r === true) return unlock(); if (r === null) return unlock(true); }
+    else if (a) clear();
+    showLogin();
+  })();
+})();
+
+</script>
 
     <div class="flex h-screen overflow-hidden">
 
@@ -3520,7 +3616,7 @@
 
   // শুরু
   const fresh = !hasLock() && !localStorage.getItem('dm_cloud') && !localStorage.getItem('dm_setup_done') && !localStorage.getItem('dm_products') && !localStorage.getItem('dm_sales');
-  if (hasLock()) lockApp(); else { applyRole(); if (fresh) showGate(); }
+  if (hasLock()) lockApp(); else { applyRole(); if (fresh && !window.DM_AUTH) showGate(); }
 })();
 
 </script>
@@ -3574,9 +3670,7 @@
   const st = document.createElement('style');
   st.textContent = `.cat-chip{background:hsl(var(--h) 85% 90%);color:hsl(var(--h) 70% 22%);border:1px solid hsl(var(--h) 60% 60%)}
   .dark .cat-chip{background:hsl(var(--h) 45% 24%);color:hsl(var(--h) 85% 88%);border-color:hsl(var(--h) 50% 42%)}
-  .cat-chip.on{background:hsl(var(--h) 72% 40%);color:#fff;border-color:hsl(var(--h) 72% 32%);box-shadow:0 0 0 2px hsl(var(--h) 80% 75%)}
-  .cat-card{border-left:6px solid hsl(var(--h) 70% 48%)!important;background:hsl(var(--h) 90% 96%)!important}
-  .dark .cat-card{background:hsl(var(--h) 35% 18%)!important}`;
+  .cat-chip.on{background:hsl(var(--h) 72% 40%);color:#fff;border-color:hsl(var(--h) 72% 32%);box-shadow:0 0 0 2px hsl(var(--h) 80% 75%)}`;
   document.head.appendChild(st);
   function hue(cat) {
     const m = JSON.parse(localStorage.getItem('dm_catcolors') || '{}');
@@ -3587,8 +3681,9 @@
   renderPOSCategoryButtons = function () {
     _rc();
     $('pos-category-buttons').querySelectorAll('button').forEach(b => {
-      const m = (b.getAttribute('onclick') || '').match(/setPOSCategoryFilter\('(.*)'\)/); if (!m || m[1] === 'all') return;
-      b.className = 'px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap shadow-sm cat-chip' + (appState.selectedCategoryFilter === m[1] ? ' on' : '');
+      const m = (b.getAttribute('onclick') || '').match(/setPOSCategoryFilter\('(.*)'\)/);
+      if (!m || m[1] === 'all' || appState.selectedCategoryFilter !== m[1]) return;
+      b.className = 'px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap shadow-sm cat-chip on';
       b.style.setProperty('--h', hue(m[1]));
     });
   };
@@ -3597,19 +3692,10 @@
     _rp();
     $('pos-product-grid').querySelectorAll('[onclick^="addToCart("]').forEach(card => {
       const p = appState.products.find(x => x.id === +card.getAttribute('onclick').match(/\d+/)[0]); if (!p) return;
-      card.classList.add('cat-card'); card.style.setProperty('--h', hue(p.category));
-      const badge = card.querySelector('span.rounded'); if (badge) badge.className = 'px-2 py-0.5 rounded font-semibold text-[10px] cat-chip';
+      const badge = card.querySelector('span.rounded'); if (badge) { badge.className = 'px-2 py-0.5 rounded font-semibold text-[10px] cat-chip'; badge.style.setProperty('--h', hue(p.category)); }
     });
   };
-  const _ri = renderInventory;
-  renderInventory = function () {
-    _ri();
-    document.querySelectorAll('#inventory-table-body tr').forEach(tr => {
-      const sp = tr.children[2] && tr.children[2].querySelector('span'), nm = tr.children[1] && tr.children[1].innerText.trim();
-      const p = appState.products.find(x => x.name === nm); if (sp && p) { sp.className = 'px-2 py-0.5 rounded text-xs cat-chip'; sp.style.setProperty('--h', hue(p.category)); }
-    });
-  };
-  renderPOSCategoryButtons(); renderPOSProducts(); renderInventory();
+  renderPOSCategoryButtons(); renderPOSProducts();
 
   // ---------- সাপ্লায়ার লেজার ----------
   openSupLedger = function (name) {
@@ -3645,6 +3731,28 @@
   };
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('sup-ledger')) $('sup-ledger').remove(); });
   if (!$('view-suppliers').classList.contains('hidden')) renderSuppliers();
+})();
+
+</script>
+<script>
+/* লগইন-সুরক্ষিত সিঙ্কের জন্য সেটিংস ও নতুন ডিভাইসের ব্যবস্থা */
+(function () {
+  const $ = id => document.getElementById(id);
+  const fresh = !localStorage.getItem('dm_products') && !localStorage.getItem('dm_sales');
+  const card = $('cl-url') && $('cl-url').closest('.md\\:col-span-2');
+  if (card) card.innerHTML = `<h3 class="font-bold text-lg border-b pb-2">☁️ ক্লাউড সিঙ্ক (লগইন-সুরক্ষিত)</h3>
+    <p class="text-sm">অ্যাকাউন্ট: <b id="acct-email"></b></p>
+    <div class="flex flex-wrap items-center gap-2"><button onclick="syncNow()" class="px-3 py-1.5 text-white text-xs font-semibold rounded-lg bg-blue-600">এখনই সিঙ্ক করুন</button><button onclick="DM_AUTH.logout(false)" class="px-3 py-1.5 text-white text-xs font-semibold rounded-lg bg-gray-600">সাইট থেকে লগআউট</button><button onclick="if(confirm('এই ডিভাইসের সব ডেটা মুছে যাবে (ক্লাউডে যা সিঙ্ক হয়েছে তা থাকবে)। নিশ্চিত?'))DM_AUTH.logout(true)" class="px-3 py-1.5 text-white text-xs font-semibold rounded-lg bg-red-600">লগআউট ও এই ডিভাইসের ডেটা মুছুন</button><span id="cl-status" class="text-xs text-gray-500"></span></div>
+    <p class="text-[11px] text-gray-400">ক্লাউডের ডেটা শুধু লগইন করা অ্যাকাউন্টই দেখতে পারে। প্রতি ৩০ সেকেন্ডে অটো সিঙ্ক হয়। সার্বজনীন কম্পিউটারে কাজ শেষে "লগআউট ও ডেটা মুছুন" ব্যবহার করুন।</p>`;
+  const setEmail = () => { const e = $('acct-email'); if (e) e.textContent = DM_AUTH.email() || '—'; };
+  const _st = switchTab; switchTab = function (t) { _st(t); if (t === 'settings') setEmail(); };
+  const _ma = myAcct;
+  myAcct = function () { _ma(); const o = $('ac-out'); if (o) { o.insertAdjacentHTML('afterend', '<button id="ac-site" class="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold mt-1">সাইট থেকে লগআউট</button>'); $('ac-site').onclick = () => DM_AUTH.logout(false); } };
+  function onAuth() {
+    if (fresh && !localStorage.getItem('dm_products') && !localStorage.getItem('dm_sales')) { appState.products = []; renderPOSCategoryButtons(); renderPOSProducts(); renderInventory(); renderDashboard(); }
+    setEmail(); if (DM_AUTH.hasDb()) setTimeout(() => syncNow(), 300);
+  }
+  if (DM_AUTH.isUnlocked()) onAuth(); else window.addEventListener('dm-auth', onAuth, { once: true });
 })();
 
 </script>
