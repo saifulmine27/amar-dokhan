@@ -259,7 +259,7 @@
                                 </div>
                                 
                                 <!-- Dynamic Category Buttons -->
-                                <div class="flex items-center space-x-2 space-x-reverse overflow-x-auto pb-1" id="pos-category-buttons">
+                                <div class="flex flex-wrap items-center gap-2 pb-1" id="pos-category-buttons">
                                     <!-- Dynamic Category Buttons populated here -->
                                 </div>
                             </div>
@@ -2721,7 +2721,7 @@
     if (applying) return;
     dirty = true; clearTimeout(timer); timer = setTimeout(() => sync(), 1500);
   };
-  const snap = () => { const a = appState; return { products: a.products, sales: a.sales, expenses: a.expenses, payments: a.payments, purchases: a.purchases, adj: a.adj, del: a.del, customers: enc(a.customers), dues: enc(a.dues), suppliers: enc(a.suppliers), settings: a.settings, ts: Date.now() }; };
+  const snap = () => { const a = appState; return { products: a.products, sales: a.sales, expenses: a.expenses, payments: a.payments, purchases: a.purchases, adj: a.adj, del: a.del, customers: enc(a.customers), dues: enc(a.dues), suppliers: enc(a.suppliers), settings: a.settings, auth: window.dmAuthExport && dmAuthExport(), ts: Date.now() }; };
 
   function merge(R) {
     const a = appState, D = a.del, RD = R.del || {}; let ch = false;
@@ -2746,6 +2746,7 @@
       else if ((rp.u || 0) > (lp.u || 0)) { ['name', 'category', 'unit', 'buyPrice', 'sellPrice', 'alertLevel', 'barcode', 'expiry', 'wholesale', 'u'].forEach(k => lp[k] = rp[k]); ch = true; }
     });
     const rc = dec(R.customers); Object.keys(rc).forEach(n => { if (!a.customers[n]) { a.customers[n] = rc[n]; ch = true; } });
+    if (R.auth && window.dmAuthImport && dmAuthImport(R.auth)) ch = true;
     if (ch) {
       const byDate = (x, y) => new Date(y.date) - new Date(x.date);
       a.sales.sort(byDate); a.expenses.sort(byDate); a.purchases.sort(byDate);
@@ -3278,15 +3279,16 @@
     if (lp.staff) DB.users.push({ id: rnd(4), name: 'স্টাফ', role: 'staff', legacy: true, hash: lp.staff });
     S('dm_users', DB);
   }
-  const save = () => S('dm_users', DB), hasLock = () => DB.users.length > 0;
+  const save = nt => { if (!nt) DB.u = Date.now(); S('dm_users', DB); }, hasLock = () => DB.users.length > 0;
   DB.rules = DB.rules || JSON.parse(JSON.stringify(DEF)); ['manager', 'staff'].forEach(r => DB.rules[r] = DB.rules[r] || JSON.parse(JSON.stringify(DEF[r])));
   const can = k => { const r = dmRole(); return r === 'owner' || !!(DB.rules[r] || {})[k]; };
   const maxDisc = r => { const v = (DB.rules[r] || {}).maxDisc; return v === undefined ? (r === 'staff' ? 10 : 100) : v; };
   let cur = null, sel = null, idleT;
   window.dmRole = () => cur ? cur.role : (hasLock() ? 'staff' : 'owner');
   const log = a => { const L = J('dm_audit', []); L.unshift({ t: new Date().toISOString(), u: cur ? cur.name : '-', a }); S('dm_audit', L.slice(0, 300)); };
+  window.dmLog = log;
   async function verify(u, pin) {
-    if (u.legacy) { if (await legacy(pin) !== u.hash) return false; u.salt = rnd(16); u.hash = await kdf(pin, u.salt); delete u.legacy; save(); return true; }
+    if (u.legacy) { if (await legacy(pin) !== u.hash) return false; u.salt = rnd(16); u.hash = await kdf(pin, u.salt); delete u.legacy; save(true); return true; }
     return await kdf(pin, u.salt) === u.hash;
   }
   async function newRecovery() { const code = [rnd(2), rnd(2), rnd(2)].join('-').toUpperCase(), salt = rnd(8); DB.rec = { salt, hash: await kdf(code, salt) }; save(); return code; }
@@ -3417,13 +3419,14 @@
 
   // আমার অ্যাকাউন্ট: পিন বদল / লগআউট
   myAcct = function () {
-    const ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4';
-    ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl p-5 w-full max-w-xs space-y-2"><h3 class="font-bold">${esc(cur.name)} (${ROLE[cur.role]})</h3><input id="ac-old" type="password" inputmode="numeric" maxlength="6" placeholder="বর্তমান পিন" class="inp"><input id="ac-new" type="password" inputmode="numeric" maxlength="6" placeholder="নতুন পিন (৪–৬ সংখ্যা)" class="inp"><div class="flex gap-2 pt-1"><button id="ac-x" class="flex-1 py-2 bg-gray-300 dark:bg-gray-600 rounded-lg text-sm">বন্ধ</button><button id="ac-s" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">পিন বদলান</button></div><button id="ac-out" class="w-full py-2 bg-red-50 text-red-600 rounded-lg text-sm font-semibold">লগআউট</button></div>`;
+    const own = cur.role === 'owner', ov = document.createElement('div'); ov.className = 'fixed inset-0 bg-black/60 z-[90] flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-xl p-5 w-full max-w-xs space-y-2"><h3 class="font-bold">${esc(cur.name)} (${ROLE[cur.role]})</h3>${own ? '<input id="ac-old" type="password" inputmode="numeric" maxlength="6" placeholder="বর্তমান পিন" class="inp"><input id="ac-new" type="password" inputmode="numeric" maxlength="6" placeholder="নতুন পিন (৪–৬ সংখ্যা)" class="inp">' : '<p class="text-xs text-gray-500">শুধু মালিক পিন বদলাতে পারে। পিন বদলাতে হলে মালিককে বলুন।</p>'}<div class="flex gap-2 pt-1"><button id="ac-x" class="flex-1 py-2 bg-gray-300 dark:bg-gray-600 rounded-lg text-sm">বন্ধ</button>${own ? '<button id="ac-s" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">পিন বদলান</button>' : ''}</div><button id="ac-out" class="w-full py-2 bg-red-50 text-red-600 rounded-lg text-sm font-semibold">লগআউট</button></div>`;
     document.body.appendChild(ov); $('ac-x').onclick = () => ov.remove(); $('ac-out').onclick = () => { ov.remove(); lockApp(); };
-    $('ac-s').onclick = async () => {
+    if (own) $('ac-s').onclick = async () => {
+      if (cur.role !== 'owner') return;
       if (!await verify(cur, $('ac-old').value)) return showToast('বর্তমান পিন ভুল', 'error');
       if (!okPin($('ac-new').value)) return showToast('নতুন পিন ৪–৬ সংখ্যার হতে হবে', 'error');
-      cur.salt = rnd(16); cur.hash = await kdf($('ac-new').value, cur.salt); save(); log('নিজের পিন বদল'); ov.remove(); showToast('পিন বদলানো হয়েছে');
+      cur.salt = rnd(16); cur.hash = await kdf($('ac-new').value, cur.salt); save(); log('মালিক নিজের পিন বদলাল'); ov.remove(); showToast('পিন বদলানো হয়েছে');
     };
   };
 
@@ -3483,8 +3486,79 @@
     $('au-csv').onclick = () => { const q = v => `"${String(v).replace(/"/g, '""')}"`, a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + 'সময়,ইউজার,কাজ\n' + J('dm_audit', []).map(x => [x.t, x.u, x.a].map(q).join(',')).join('\n')], { type: 'text/csv' })); a.download = 'audit_log.csv'; a.click(); };
   };
 
+  // ইউজার/পিন/নিয়ম ক্লাউডে সিঙ্ক (নতুন ডিভাইসেও পিন চালু হবে)
+  const arr = v => Array.isArray(v) ? v.filter(Boolean) : (v && typeof v === 'object' ? Object.values(v) : []);
+  window.dmAuthExport = () => (DB.users.length || DB.u) ? { users: DB.users, rules: DB.rules, rec: DB.rec || null, u: DB.u || 0 } : undefined;
+  window.dmAuthImport = A => {
+    if (!A || (A.u || 0) <= (DB.u || 0)) return false;
+    DB.users = arr(A.users); DB.rules = A.rules || DB.rules; DB.rec = A.rec || null; DB.u = A.u;
+    ['manager', 'staff'].forEach(r => DB.rules[r] = DB.rules[r] || JSON.parse(JSON.stringify(DEF[r])));
+    S('dm_users', DB);
+    if (cur) cur = DB.users.find(u => u.id === cur.id) || null;
+    if (hasLock() && !cur) lockApp(); else { if (!hasLock()) cur = null; applyRole(); }
+    return true;
+  };
+
+  // নতুন ডিভাইসের প্রথম পর্দা
+  function showGate() {
+    const ov = document.createElement('div'); ov.id = 'gate'; ov.className = 'fixed inset-0 z-[101] bg-emerald-700 flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-3"><div class="text-4xl text-center">📲</div><h2 class="font-bold text-lg text-center">নতুন ডিভাইস</h2><p class="text-xs text-gray-500 text-center">দোকানের ডেটা আনতে ক্লাউডের তথ্য দিন। সংযুক্ত হলে মালিকের সেট করা ইউজার ও পিন এখানেও চালু হবে।</p><input id="g-url" class="inp" placeholder="Database URL (https://...)"><input id="g-code" class="inp" placeholder="সিঙ্ক কোড"><input id="g-key" class="inp" placeholder="Secret/Token (থাকলে)"><p id="g-msg" class="text-xs text-red-500 min-h-[1rem]"></p><button id="g-go" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg">সংযুক্ত করুন</button><button id="g-skip" class="w-full text-xs text-gray-500 underline">এই ডিভাইসে আলাদা নতুন দোকান চালাব</button></div>`;
+    document.body.appendChild(ov);
+    $('g-skip').onclick = () => { localStorage.setItem('dm_setup_done', '1'); ov.remove(); };
+    $('g-go').onclick = () => {
+      $('cl-url').value = $('g-url').value.trim(); $('cl-code').value = $('g-code').value.trim(); $('cl-key').value = $('g-key').value.trim();
+      appState.products = []; localStorage.removeItem('dm_cloud'); saveCloud();
+      if (!localStorage.getItem('dm_cloud')) return $('g-msg').textContent = 'URL (https://...) ও ৬+ অক্ষরের কোড দিন';
+      $('g-msg').textContent = 'সংযুক্ত হচ্ছে…'; let t = 0;
+      const iv = setInterval(() => {
+        t++; const st = ($('cl-status') || {}).textContent || '';
+        if (st.includes('✔')) { clearInterval(iv); ov.remove(); localStorage.setItem('dm_setup_done', '1'); renderPOSCategoryButtons(); renderPOSProducts(); renderInventory(); renderDashboard(); if (hasLock() && !cur) lockApp(); }
+        else if (st.includes('✖') || t > 40) { clearInterval(iv); $('g-msg').textContent = st || 'সংযোগ হয়নি, আবার চেষ্টা করুন'; }
+      }, 500);
+    };
+  }
+
   // শুরু
-  if (hasLock()) lockApp(); else applyRole();
+  const fresh = !hasLock() && !localStorage.getItem('dm_cloud') && !localStorage.getItem('dm_setup_done') && !localStorage.getItem('dm_products') && !localStorage.getItem('dm_sales');
+  if (hasLock()) lockApp(); else { applyRole(); if (fresh) showGate(); }
+})();
+
+</script>
+<script>
+/* মাল ক্রয়: পণ্য বাছলে আগের ক্রয়মূল্য ও MRP দেখায়, MRP বদলানো যায় */
+(function () {
+  const $ = id => document.getElementById(id);
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const prod = () => appState.products.find(x => String(x.id) === $('pu-prod').value);
+  $('pu-price').insertAdjacentHTML('afterend',
+    '<input id="pu-mrp" type="number" step="any" min="0" placeholder="বিক্রিমূল্য / MRP (৳)" class="inp"><p id="pu-hint" class="text-xs text-gray-500 leading-relaxed"></p>');
+  function hint() {
+    const p = prod(); if (!p) { $('pu-hint').textContent = ''; return; }
+    const buy = parseFloat($('pu-price').value), mrp = parseFloat($('pu-mrp').value);
+    let t = `আগের ক্রয়মূল্য: <b>৳${p.buyPrice}</b> · আগের MRP: <b>৳${p.sellPrice}</b> · বর্তমান স্টক: <b>${p.stock} ${p.unit || ''}</b>`;
+    if (buy >= 0 && mrp > 0) { const m = r3(mrp - buy); t += `<br>প্রতি একক লাভ: <b class="${m < 0 ? 'text-red-600' : 'text-emerald-600'}">৳${m} (${r3(m / mrp * 100)}%)</b>`; if (buy !== p.buyPrice) t += ` · ক্রয়মূল্য ${buy > p.buyPrice ? '▲ বেড়েছে' : '▼ কমেছে'}`; if (mrp !== p.sellPrice) t += ` · MRP বদলাবে`; }
+    $('pu-hint').innerHTML = t;
+  }
+  function fill() { const p = prod(); if (!p) return hint(); $('pu-price').value = p.buyPrice; $('pu-mrp').value = p.sellPrice; hint(); }
+  $('pu-prod').addEventListener('change', fill);
+  ['pu-price', 'pu-mrp'].forEach(i => $(i).addEventListener('input', hint));
+  const _rs = renderSuppliers;
+  renderSuppliers = function () {
+    const keep = $('pu-prod').value; _rs();
+    if (keep && [...$('pu-prod').options].some(o => o.value === keep)) $('pu-prod').value = keep;
+    if (!$('pu-price').value && !$('pu-mrp').value) fill(); else hint();
+  };
+  const _ap = addPurchase;
+  addPurchase = function (e) {
+    const p = prod(), mrp = parseFloat($('pu-mrp').value), n = appState.purchases.length, old = p && p.sellPrice, oldBuy = p && p.buyPrice;
+    _ap(e);
+    if (p && appState.purchases.length > n) {
+      const x = appState.purchases[0]; x.mrp = mrp > 0 ? mrp : p.sellPrice;
+      if (mrp > 0 && mrp !== old) { p.sellPrice = mrp; p.u = Date.now(); if (window.dmLog) dmLog(`মাল ক্রয়ে দাম বদল: ${p.name} ক্রয় ${oldBuy}→${p.buyPrice}, MRP ${old}→${mrp}`); }
+      saveState(); renderPOSProducts(); renderInventory(); renderSuppliers();
+    }
+  };
+  if (!$('view-suppliers').classList.contains('hidden')) renderSuppliers();
 })();
 
 </script>
