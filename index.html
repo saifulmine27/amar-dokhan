@@ -3586,8 +3586,8 @@
     _rc();
     $('pos-category-buttons').querySelectorAll('button').forEach(b => {
       const m = (b.getAttribute('onclick') || '').match(/setPOSCategoryFilter\('(.*)'\)/);
-      if (!m || m[1] === 'all') return;
-      b.className = 'px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap shadow-sm cat-chip' + (appState.selectedCategoryFilter === m[1] ? ' on' : '');
+      if (!m || m[1] === 'all' || appState.selectedCategoryFilter !== m[1]) return;
+      b.className = 'px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap shadow-sm cat-chip on';
       b.style.setProperty('--h', hue(m[1]));
     });
   };
