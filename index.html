@@ -3562,5 +3562,91 @@
 })();
 
 </script>
+<script>
+/* প্রতিটা ক্যাটাগরির আলাদা রঙ + সাপ্লায়ার লেজার */
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const money = n => '৳ ' + r3(n).toLocaleString();
+
+  // ---------- ক্যাটাগরির রঙ ----------
+  const st = document.createElement('style');
+  st.textContent = `.cat-chip{background:hsl(var(--h) 85% 90%);color:hsl(var(--h) 70% 22%);border:1px solid hsl(var(--h) 60% 60%)}
+  .dark .cat-chip{background:hsl(var(--h) 45% 24%);color:hsl(var(--h) 85% 88%);border-color:hsl(var(--h) 50% 42%)}
+  .cat-chip.on{background:hsl(var(--h) 72% 40%);color:#fff;border-color:hsl(var(--h) 72% 32%);box-shadow:0 0 0 2px hsl(var(--h) 80% 75%)}
+  .cat-card{border-left:6px solid hsl(var(--h) 70% 48%)!important;background:hsl(var(--h) 90% 96%)!important}
+  .dark .cat-card{background:hsl(var(--h) 35% 18%)!important}`;
+  document.head.appendChild(st);
+  function hue(cat) {
+    const m = JSON.parse(localStorage.getItem('dm_catcolors') || '{}');
+    if (m[cat] === undefined) { const used = Object.values(m); let i = 0; while (used.includes(i)) i++; m[cat] = i; localStorage.setItem('dm_catcolors', JSON.stringify(m)); }
+    return Math.round((m[cat] * 137.508 + 20) % 360);
+  }
+  const _rc = renderPOSCategoryButtons;
+  renderPOSCategoryButtons = function () {
+    _rc();
+    $('pos-category-buttons').querySelectorAll('button').forEach(b => {
+      const m = (b.getAttribute('onclick') || '').match(/setPOSCategoryFilter\('(.*)'\)/); if (!m || m[1] === 'all') return;
+      b.className = 'px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap shadow-sm cat-chip' + (appState.selectedCategoryFilter === m[1] ? ' on' : '');
+      b.style.setProperty('--h', hue(m[1]));
+    });
+  };
+  const _rp = renderPOSProducts;
+  renderPOSProducts = function () {
+    _rp();
+    $('pos-product-grid').querySelectorAll('[onclick^="addToCart("]').forEach(card => {
+      const p = appState.products.find(x => x.id === +card.getAttribute('onclick').match(/\d+/)[0]); if (!p) return;
+      card.classList.add('cat-card'); card.style.setProperty('--h', hue(p.category));
+      const badge = card.querySelector('span.rounded'); if (badge) badge.className = 'px-2 py-0.5 rounded font-semibold text-[10px] cat-chip';
+    });
+  };
+  const _ri = renderInventory;
+  renderInventory = function () {
+    _ri();
+    document.querySelectorAll('#inventory-table-body tr').forEach(tr => {
+      const sp = tr.children[2] && tr.children[2].querySelector('span'), nm = tr.children[1] && tr.children[1].innerText.trim();
+      const p = appState.products.find(x => x.name === nm); if (sp && p) { sp.className = 'px-2 py-0.5 rounded text-xs cat-chip'; sp.style.setProperty('--h', hue(p.category)); }
+    });
+  };
+  renderPOSCategoryButtons(); renderPOSProducts(); renderInventory();
+
+  // ---------- সাপ্লায়ার লেজার ----------
+  openSupLedger = function (name) {
+    const s = appState.suppliers[name]; if (!s) return;
+    const rows = appState.purchases.filter(x => x.supplier === name).sort((a, b) => new Date(a.date) - new Date(b.date));
+    let bal = 0;
+    const body = rows.map(x => { bal = r3(bal + (x.due || 0)); const pay = !x.qty && !x.total;
+      return `<tr class="border-t border-gray-100 dark:border-gray-700"><td class="p-2 text-[11px] text-gray-500">${new Date(x.date).toLocaleDateString('bn-BD')}</td><td class="p-2">${pay ? '<span class="text-emerald-600 font-semibold">বাকি পরিশোধ</span>' : `${esc(x.product)} <span class="text-gray-400">(${x.qty} × ৳${x.price})</span>`}</td><td class="p-2 text-right">${x.total ? money(x.total) : '-'}</td><td class="p-2 text-right text-emerald-600">${x.paid ? money(x.paid) : '-'}</td><td class="p-2 text-right font-bold ${bal > 0 ? 'text-red-600' : ''}">${money(bal)}</td></tr>`; }).join('');
+    const tot = rows.reduce((a, x) => a + (x.total || 0), 0), paid = rows.reduce((a, x) => a + (x.paid || 0), 0);
+    const old = $('sup-ledger'); if (old) old.remove();
+    const ov = document.createElement('div'); ov.id = 'sup-ledger'; ov.className = 'fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4';
+    ov.innerHTML = `<div id="sup-ledger-box" class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div class="p-4 bg-emerald-600 text-white font-bold flex justify-between items-center"><div><div>সাপ্লায়ার লেজার: ${esc(name)}</div><div class="text-xs font-normal text-emerald-100">${rows.length}টি লেনদেন</div></div><button id="sl-x" class="text-lg">✖</button></div>
+      <div class="p-4 grid grid-cols-3 gap-3 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-center">
+        <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700"><span class="text-[11px] text-gray-500 block">মোট মাল কেনা</span><b class="text-sm">${money(tot)}</b></div>
+        <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700"><span class="text-[11px] text-gray-500 block">মোট পরিশোধ</span><b class="text-sm text-emerald-600">${money(paid)}</b></div>
+        <div class="bg-white dark:bg-gray-800 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700"><span class="text-[11px] text-gray-500 block">এখনো দিতে হবে</span><b class="text-sm text-red-600">${money(s.due)}</b></div></div>
+      <div class="p-4 overflow-y-auto flex-1"><table class="w-full text-left text-xs text-gray-600 dark:text-gray-300"><thead class="bg-gray-100 dark:bg-gray-700 font-semibold"><tr><th class="p-2">তারিখ</th><th class="p-2">বিবরণ</th><th class="p-2 text-right">মোট বিল</th><th class="p-2 text-right">পরিশোধ</th><th class="p-2 text-right">বাকি (জের)</th></tr></thead><tbody>${body || '<tr><td colspan="5" class="p-4 text-center text-gray-400">কোনো লেনদেন নেই</td></tr>'}</tbody></table></div>
+      <div class="p-3 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 flex gap-2 justify-end">${s.due > 0 ? '<button id="sl-pay" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-semibold mr-auto">পরিশোধ করুন</button>' : ''}<button id="sl-print" class="px-3 py-1.5 bg-gray-600 text-white rounded text-xs font-semibold">🖨 প্রিন্ট / PDF</button><button id="sl-close" class="px-3 py-1.5 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white rounded text-xs font-semibold">বন্ধ করুন</button></div></div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove(); $('sl-x').onclick = $('sl-close').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    $('sl-print').onclick = () => printEl($('sup-ledger-box'));
+    if ($('sl-pay')) $('sl-pay').onclick = () => { paySupplier(name); openSupLedger(name); };
+  };
+  const _rs = renderSuppliers;
+  renderSuppliers = function () {
+    _rs();
+    $('sup-list').querySelectorAll(':scope > div').forEach(row => {
+      const b = row.querySelector('b'); if (!b) return; const n = b.textContent;
+      b.className = 'cursor-pointer text-emerald-700 dark:text-emerald-400 underline'; b.title = 'লেজার দেখুন'; b.onclick = () => openSupLedger(n);
+    });
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('sup-ledger')) $('sup-ledger').remove(); });
+  if (!$('view-suppliers').classList.contains('hidden')) renderSuppliers();
+})();
+
+</script>
 </body>
 </html>
